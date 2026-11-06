@@ -25,6 +25,25 @@
 - English and Russian interface.
 - No backend, no account, no analytics.
 
+## Without filter / With filter
+
+The same YouTube home feed, before and after. The tag was about IT, AI and software, in **Show only matching** mode.
+
+<table>
+  <tr>
+    <th align="center">Without filter</th>
+    <th align="center">With filter</th>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/compare-without.jpg" alt="YouTube home feed without the filter: 12 different videos" width="450"></td>
+    <td><img src="docs/screenshots/compare-with.jpg" alt="The same feed with the filter: only 4 videos about IT, AI and software remain" width="450"></td>
+  </tr>
+  <tr>
+    <td align="center">12 videos, mostly unrelated</td>
+    <td align="center">4 videos that match the tag</td>
+  </tr>
+</table>
+
 ## How it works
 
 Jev is a decision model that answers yes/no questions. For each video card the extension sends the title, the channel and a short description snippet together with your tags, and Jev says how likely each tag matches. If the probability passes your threshold (default 0.7), the video is matched. In **Show only matching** mode matched videos fade in and the rest stay hidden; in **Hide matching** mode matched videos are hidden.
