@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>autofill fixture</title>
+<style>
+body{font-family:Roboto,Arial,sans-serif;margin:0;background:#0f0f0f;color:#f1f1f1}
+a{color:inherit;text-decoration:none}
+header{height:56px;display:flex;align-items:center;padding:0 24px;font-weight:700;font-size:20px;border-bottom:1px solid #272727}
+header span{color:#ff3b30;margin-right:6px}
+#contents{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:24px 16px;padding:24px}
+ytd-rich-item-renderer{display:block}
+.thumb{aspect-ratio:16/9;border-radius:12px;margin-bottom:10px}
+#video-title{display:block;font-size:16px;font-weight:600;line-height:1.35}
+ytd-channel-name{display:block;font-size:13px;color:#aaa;margin-top:4px}
+ytd-continuation-item-renderer{display:block;grid-column:1/-1;height:60px}
+#slop-feed-status{color:#ddd}
+</style></head><body>
+<header><span>▶</span> VideoSite</header>
+<div id="contents"><ytd-continuation-item-renderer id="cont"></ytd-continuation-item-renderer></div>
+<script>
+// Emulates an infinite feed: the continuation adds a batch of cards when it enters the viewport.
+// The first batch has 3 matching cards; later batches have none, so autofill stops with its "no more" message.
+const cont = document.getElementById("cont");
+const grads = ["#667eea,#764ba2", "#43e97b,#38f9d7", "#4facfe,#00f2fe", "#fa709a,#fee140", "#a18cd1,#fbc2eb", "#f6d365,#fda085"];
+const good = ["Productivity tips: a calm weekly review in 20 minutes", "Programming tutorials: Rust ownership explained", "Programming tutorials: building a CLI with TypeScript"];
+const bad = ["Top 5 reaction videos of the week", "10 celebrity feuds you forgot about", "I tried the viral morning hack", "You won't believe this prank"];
+let n = 0;
+function add(count, matched) {
+  for (let i = 0; i < count; i++) {
+    const el = document.createElement("ytd-rich-item-renderer");
+    const id = "shot" + String(++n).padStart(7, "0");
+    const title = i < matched ? good[i % good.length] : bad[n % bad.length] + " #" + n;
+    el.innerHTML = '<div class="thumb"></div><a href="/watch?v=' + id + '"><span id="video-title"></span></a><ytd-channel-name><a>Channel ' + (n % 7 + 1) + "</a></ytd-channel-name>";
+    el.querySelector(".thumb").style.background = "linear-gradient(135deg," + grads[n % grads.length] + ")";
+    el.querySelector("#video-title").textContent = title;
+    cont.before(el);
+  }
+}
+add(6, 3);
+let loading = false;
+new IntersectionObserver((es) => {
+  for (const e of es) {
+    if (!e.isIntersecting || loading) continue;
+    loading = true;
+    setTimeout(() => { add(6, 0); loading = false; }, 150);
+  }
+}).observe(cont);
+</script></body></html>

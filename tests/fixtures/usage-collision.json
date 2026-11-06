@@ -1,0 +1,1 @@
+{"comment": "Synthetic fake keys, not real credentials. The test prepends the 'sk-or-v1-' prefix. Both suffixes collide under FNV-1a 32.", "aSuffix": "4a979c1c13861da35def2b186fc59b0c0dbdad5098ef1628f35070d83a0a79e3", "bSuffix": "3235f0539f2da4a9dd4c26798ac76619194f2364978eebc9066fb086009a6644", "fp": "0x43b02a30", "n": 118515}

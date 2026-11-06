@@ -1,0 +1,33 @@
+/* Шлюз allowlist. Действует только при html[data-slop-gate="allowlist"]; без атрибута страница не меняется.
+   Список селекторов должен совпадать с CARD_SELECTOR в src/content/selectors.ts (проверяет тест). */
+html[data-slop-gate="allowlist"] :is(ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer, yt-lockup-view-model, ytm-shorts-lockup-view-model, ytd-reel-item-renderer):not([data-slop-show]) {
+  display: none !important;
+}
+
+@keyframes slop-reveal {
+  from { opacity: 0; transform: translateY(8px); }
+}
+
+.slop-reveal[data-slop-show] {
+  animation: slop-reveal 320ms ease-out backwards;
+  animation-delay: calc(var(--slop-i, 0) * 50ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slop-reveal[data-slop-show] { animation: none; }
+}
+
+/* Индикатор автодогрузки ленты (создаётся content script перед continuation). Не карточка, сетку не ломает. */
+#slop-feed-status {
+  box-sizing: border-box;
+  grid-column: 1 / -1;
+  flex: 0 0 100%;
+  width: 100%;
+  max-width: 100%;
+  padding: 16px;
+  text-align: center;
+  font: 400 14px/20px Roboto, Arial, sans-serif;
+  color: var(--yt-spec-text-secondary, #606060);
+  overflow-wrap: anywhere;
+}
+#slop-feed-status[hidden] { display: none; }

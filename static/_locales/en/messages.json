@@ -1,0 +1,93 @@
+{
+  "ext_name": { "message": "slop-block" },
+  "ext_description": { "message": "Filters YouTube videos by smart tags." },
+
+  "popup_enabled": { "message": "Filter enabled" },
+  "popup_mode_label": { "message": "Mode" },
+  "popup_mode_aria": { "message": "Filter mode" },
+  "popup_mode_allowlist": { "message": "Show only matching" },
+  "popup_mode_blocklist": { "message": "Hide matching" },
+  "popup_skip_subs": { "message": "Don't filter subscriptions" },
+  "popup_key_hint": { "message": "No OpenRouter key — the filter is inactive, everything is shown." },
+  "popup_settings_link": { "message": "Settings" },
+  "popup_title_allowlist": { "message": "Only videos matching the tags are shown" },
+  "popup_title_blocklist": { "message": "Videos matching the tags are hidden" },
+  "popup_placeholder_allowlist": { "message": "What to show: productivity, IT, neural networks" },
+  "popup_placeholder_blocklist": { "message": "What to hide: weight-loss clickbait" },
+  "popup_input_label_allowlist": { "message": "Tag to show" },
+  "popup_input_label_blocklist": { "message": "Tag to hide" },
+  "popup_new_tag": { "message": "New tag" },
+  "popup_tag_enabled": { "message": "Tag enabled" },
+  "popup_delete": { "message": "Delete" },
+  "popup_add": { "message": "Add" },
+  "popup_counter": {
+    "message": "$N$/$MAX$",
+    "placeholders": { "n": { "content": "$1" }, "max": { "content": "$2" } }
+  },
+
+  "usage_title": { "message": "Spending" },
+  "usage_loading": { "message": "Loading…" },
+  "usage_no_key": { "message": "OpenRouter key is not set" },
+  "usage_network": { "message": "Couldn't fetch spending (network)" },
+  "usage_rate_limited": { "message": "Too many requests, try again later" },
+  "usage_bad_response": { "message": "Unexpected OpenRouter response" },
+  "usage_open_settings": { "message": "Open settings" },
+  "usage_today": { "message": "Today" },
+  "usage_total": { "message": "Total" },
+  "usage_limit_remaining": { "message": "Limit remaining" },
+  "usage_requests_today": { "message": "Requests today" },
+  "usage_tokens": { "message": "Tokens today / total" },
+  "usage_jev_estimate": { "message": "≈ at Jev price (total)" },
+  "usage_less_than": {
+    "message": "<$VALUE$",
+    "placeholders": { "value": { "content": "$1" } }
+  },
+  "usage_pair": {
+    "message": "$A$ / $B$",
+    "placeholders": { "a": { "content": "$1" }, "b": { "content": "$2" } }
+  },
+
+  "err_empty": { "message": "Enter the tag text." },
+  "err_too_long": {
+    "message": "No more than $MAX$ characters.",
+    "placeholders": { "max": { "content": "$1" } }
+  },
+  "err_limit": {
+    "message": "No more than $MAX$ tags.",
+    "placeholders": { "max": { "content": "$1" } }
+  },
+  "err_duplicate": { "message": "This tag already exists." },
+  "err_save": { "message": "Couldn't save the settings." },
+  "err_model_required": { "message": "Specify a model." },
+  "err_threshold_range": { "message": "The threshold must be a number from 0 to 1." },
+
+  "options_title": { "message": "slop-block — settings" },
+  "options_key_heading": { "message": "OpenRouter key" },
+  "options_loading": { "message": "Loading…" },
+  "options_key_label": { "message": "API key" },
+  "options_key_placeholder": { "message": "sk-or-…" },
+  "options_save": { "message": "Save" },
+  "options_remove": { "message": "Remove" },
+  "options_decision_heading": { "message": "Decision" },
+  "options_model": { "message": "Model" },
+  "options_threshold": { "message": "Hide threshold (0–1)" },
+  "options_save_settings": { "message": "Save settings" },
+  "options_key_saved_masked": {
+    "message": "Key saved ($MASK$).",
+    "placeholders": { "mask": { "content": "$1" } }
+  },
+  "options_key_not_set": { "message": "Key not set." },
+  "msg_key_saved": { "message": "Key saved." },
+  "msg_key_required": { "message": "Enter the key." },
+  "msg_key_removed": { "message": "Key removed." },
+  "msg_settings_saved": { "message": "Settings saved." },
+
+  "autofill_searching": { "message": "Looking for more matching videos…" },
+  "autofill_exhausted": { "message": "No more matching videos found — scroll or change your tags" },
+  "autofill_unsafe": { "message": "Scroll down to load more" },
+  "popup_feed_target": { "message": "How many videos to keep on screen (6–30)" },
+  "err_bad_target": {
+    "message": "Enter a number from $MIN$ to $MAX$.",
+    "placeholders": { "min": { "content": "$1" }, "max": { "content": "$2" } }
+  }
+}

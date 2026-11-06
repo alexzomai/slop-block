@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title></title>
+  <link rel="stylesheet" href="base.css">
+</head>
+<body>
+  <main class="popup">
+    <h1 data-i18n="ext_name"></h1>
+    <label class="row"><input type="checkbox" id="enabled"> <span data-i18n="popup_enabled"></span></label>
+    <label class="field"><span data-i18n="popup_mode_label"></span>
+      <select id="mode" data-i18n-attr="aria-label:popup_mode_aria">
+        <option value="allowlist" data-i18n="popup_mode_allowlist"></option>
+        <option value="blocklist" data-i18n="popup_mode_blocklist"></option>
+      </select>
+    </label>
+    <label class="row"><input type="checkbox" id="skip-subs"> <span data-i18n="popup_skip_subs"></span></label>
+    <label class="field"><span data-i18n="popup_feed_target"></span>
+      <input type="number" id="feed-target" min="6" max="30" step="1" inputmode="numeric" data-i18n-attr="aria-label:popup_feed_target">
+    </label>
+    <p id="key-hint" class="hint" role="status" hidden>
+      <span id="key-hint-text" data-i18n="popup_key_hint"></span> <a href="options.html" target="_blank" rel="noopener" data-i18n="popup_settings_link"></a>
+    </p>
+    <section id="usage" class="usage" data-i18n-attr="aria-label:usage_title" data-state="loading">
+      <h2 data-i18n="usage_title"></h2>
+      <p id="usage-text" class="usage-text" role="status" data-i18n="usage_loading"></p>
+      <dl id="usage-rows" class="usage-rows"></dl>
+      <button type="button" id="usage-settings" class="usage-settings" hidden data-i18n="usage_open_settings"></button>
+    </section>
+    <p id="mode-title" class="mode-title"></p>
+    <form id="add" class="add">
+      <textarea id="text" rows="2" maxlength="200" autocomplete="off" spellcheck="true" enterkeyhint="done" data-i18n-attr="aria-label:popup_new_tag"></textarea>
+      <div class="add-row">
+        <span id="counter" class="counter" aria-live="off"></span>
+        <button type="submit" data-i18n="popup_add"></button>
+      </div>
+    </form>
+    <p id="msg" class="msg" role="status"></p>
+    <ul id="tags" class="tags"></ul>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

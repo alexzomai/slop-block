@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>yt fixture</title>
+<style>body{font-family:sans-serif;margin:8px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}ytd-rich-item-renderer,ytd-video-renderer,ytd-compact-video-renderer,ytm-shorts-lockup-view-model{display:block;border:1px solid #888;padding:6px}</style></head>
+<body>
+<h3>Главная</h3>
+<div class="grid" id="home">
+  <ytd-rich-item-renderer id="h1"><a href="/watch?v=home0000001"><span id="video-title">Секрет: похудение за 3 дня</span></a><ytd-channel-name><a>Канал А</a></ytd-channel-name></ytd-rich-item-renderer>
+  <ytd-rich-item-renderer id="h2"><a href="/watch?v=home0000002"><span id="video-title">Борщ по бабушкиному рецепту</span></a><ytd-channel-name><a>Канал Б</a></ytd-channel-name></ytd-rich-item-renderer>
+  <ytd-rich-item-renderer id="h3"><a href="/watch?v=home0000003"><span id="video-title">ERR</span></a><ytd-channel-name><a>Канал В</a></ytd-channel-name></ytd-rich-item-renderer>
+  <ytd-rich-item-renderer id="h4"><a href="/watch?v=home0000004"><span id="video-title">&lt;img src=x onerror="document.title='PWNED'"&gt; похудение</span></a><ytd-channel-name><a>Эвил</a></ytd-channel-name></ytd-rich-item-renderer>
+</div>
+<h3>Поиск</h3>
+<ytd-video-renderer id="s1"><a href="/watch?v=srch0000001"><span id="video-title">Чудо-диета: похудение без спорта</span></a><div id="channel-name"><a>Диетолог</a></div><div id="description-text">Описание</div></ytd-video-renderer>
+<ytd-video-renderer id="s2"><a href="/watch?v=srch0000002"><span id="video-title">Обзор ноутбука</span></a><div id="channel-name"><a>Техно</a></div></ytd-video-renderer>
+<h3>Рекомендации</h3>
+<ytd-compact-video-renderer id="r1"><a href="/watch?v=reco0000001"><span id="video-title">Топ-10 способов похудение</span></a><ytd-channel-name><a>Топ</a></ytd-channel-name></ytd-compact-video-renderer>
+<ytd-compact-video-renderer id="r2"><a href="/watch?v=reco0000002"><span id="video-title">Концерт в Вене</span></a><ytd-channel-name><a>Музыка</a></ytd-channel-name></ytd-compact-video-renderer>
+<h3>Шортс</h3>
+<ytm-shorts-lockup-view-model id="sh1"><a href="/shorts/short000001" aria-label="Похудение за минуту, 2 млн просмотров"></a></ytm-shorts-lockup-view-model>
+<ytm-shorts-lockup-view-model id="sh2"><a href="/shorts/short000002" aria-label="Кот и огурец, 1 млн просмотров"></a></ytm-shorts-lockup-view-model>
+<button id="more" type="button">Подгрузить ещё</button>
+<button id="go-subs" type="button">Подписки</button>
+<button id="go-home" type="button">Главная</button>
+<script>
+document.getElementById('more').addEventListener('click', () => {
+  const el = document.createElement('ytd-rich-item-renderer');
+  el.id = 'h5';
+  el.innerHTML = '<a href="/watch?v=home0000005"><span id="video-title">Новое: похудение навсегда</span></a><ytd-channel-name><a>Новый</a></ytd-channel-name>';
+  document.getElementById('home').append(el);
+});
+const nav = (p) => () => { history.pushState({}, "", p); document.dispatchEvent(new CustomEvent("yt-navigate-finish")); };
+document.getElementById('go-subs').addEventListener('click', nav('/feed/subscriptions'));
+document.getElementById('go-home').addEventListener('click', nav('/'));
+</script>
+</body></html>

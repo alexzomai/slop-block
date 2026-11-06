@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title></title>
+  <link rel="stylesheet" href="base.css">
+</head>
+<body>
+  <main>
+    <h1 data-i18n="options_title"></h1>
+    <section>
+      <h2 data-i18n="options_key_heading"></h2>
+      <p id="key-status" role="status" data-i18n="options_loading"></p>
+      <label for="key" data-i18n="options_key_label"></label>
+      <input id="key" type="password" autocomplete="off" spellcheck="false" data-i18n-attr="placeholder:options_key_placeholder">
+      <div class="row">
+        <button id="save-key" type="button" data-i18n="options_save"></button>
+        <button id="remove-key" type="button" data-i18n="options_remove"></button>
+      </div>
+      <p id="key-msg" role="status"></p>
+    </section>
+    <section>
+      <h2 data-i18n="options_decision_heading"></h2>
+      <label for="model" data-i18n="options_model"></label>
+      <input id="model" type="text" autocomplete="off" spellcheck="false">
+      <label for="threshold" data-i18n="options_threshold"></label>
+      <input id="threshold" type="number" min="0" max="1" step="0.05">
+      <div class="row"><button id="save-settings" type="button" data-i18n="options_save_settings"></button></div>
+      <p id="settings-msg" role="status"></p>
+    </section>
+  </main>
+  <script src="options.js"></script>
+</body>
+</html>

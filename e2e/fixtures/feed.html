@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>yt feed fixture</title>
+<style>
+body{font-family:sans-serif;margin:8px}
+#contents{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+ytd-rich-item-renderer{display:block;border:1px solid #888;padding:6px;height:var(--ch,240px);box-sizing:border-box}
+ytd-continuation-item-renderer{display:block;grid-column:1/-1;height:60px;text-align:center}
+</style></head>
+<body>
+<h3>Лента (эмуляция бесконечной ленты YouTube)</h3>
+<div id="contents"><ytd-continuation-item-renderer id="cont">загрузка…</ytd-continuation-item-renderer></div>
+<script>
+// Эмуляция YouTube: continuation при ВХОДЕ в зону видимости (IntersectionObserver) добавляет порцию карточек.
+// Параметры: first — подходящих среди первых 6, good — подходящих в порции, per — размер порции,
+// parts — сколько всего порций (0 — continuation не грузит ничего), ch — высота карточки (px),
+// list — одна колонка без grid, anchor=none — body{overflow-anchor:none},
+// probe=bottom|<px> — когда проявились все first карточек, прокрутить и покадрово записывать
+// scrollHeight/scrollTop (window.__rec) до window.__stopProbe = true. Запасного padding снизу нет.
+const q = new URLSearchParams(location.search);
+const num = (k, d) => (q.has(k) ? Number(q.get(k)) : d);
+const first = num("first", 2), good = num("good", 5), per = num("per", 10), parts = num("parts", 100);
+// css — произвольный CSS страницы (например, свой transform/margin/position у continuation или предков)
+if (q.has("css")) { const st = document.createElement("style"); st.textContent = q.get("css"); document.head.append(st); }
+if (q.has("ch")) document.documentElement.style.setProperty("--ch", q.get("ch") + "px");
+if (q.has("list")) document.getElementById("contents").style.display = "block";
+if (q.get("anchor") === "none") document.body.style.overflowAnchor = "none";
+document.body.style.margin = q.has("probe") ? "0" : "";
+window.__portions = 0;
+window.__scrollApi = 0;
+const rawScrollTo = window.scrollTo.bind(window);
+for (const [o, n] of [[window, "scrollTo"], [window, "scrollBy"], [Element.prototype, "scrollIntoView"]]) {
+  const orig = o[n];
+  o[n] = function (...a) { window.__scrollApi++; return orig.apply(this, a); };
+}
+const cont = document.getElementById("cont");
+let n = 0;
+function addCards(count, matched) {
+  for (let i = 0; i < count; i++) {
+    const el = document.createElement("ytd-rich-item-renderer");
+    const id = "vid" + String(++n).padStart(8, "0");
+    el.id = id;
+    const title = i < matched ? "Нейро-похудение выпуск " + n : "Борщ рецепт " + n;
+    el.innerHTML = '<a href="/watch?v=' + id + '"><span id="video-title"></span></a><ytd-channel-name><a>Канал</a></ytd-channel-name>';
+    el.querySelector("#video-title").textContent = title;
+    cont.before(el);
+  }
+}
+addCards(6, first);
+// счётчик попыток расширения: continuation получает inline transform (выход/вход для IntersectionObserver)
+window.__reenters = 0;
+new MutationObserver(() => { if (cont.style.transform !== "") window.__reenters++; }).observe(cont, { attributes: true, attributeFilter: ["style"] });
+if (q.has("probe")) {
+  const want = num("first", 2);
+  window.__rec = [];
+  const sample = () => {
+    const se = document.scrollingElement;
+    window.__rec.push([se.scrollHeight, Math.round(se.scrollTop * 100) / 100]);
+    if (!window.__stopProbe) requestAnimationFrame(sample);
+  };
+  let started = false;
+  new MutationObserver(() => {
+    if (started || document.querySelectorAll("[data-slop-show]").length < want) return;
+    started = true;
+    const where = q.get("probe") === "bottom" ? document.scrollingElement.scrollHeight : Number(q.get("probe"));
+    rawScrollTo({ top: where, left: 0, behavior: "instant" }); // мгновенно: пробе нужна исходная позиция даже при CSS scroll-behavior:smooth
+    window.__probeStart = [document.scrollingElement.scrollHeight, document.scrollingElement.scrollTop];
+    sample();
+  }).observe(document.getElementById("contents"), { attributes: true, subtree: true, attributeFilter: ["data-slop-show"] });
+}
+let loading = false;
+new IntersectionObserver((es) => {
+  for (const e of es) {
+    if (!e.isIntersecting || loading || window.__portions >= parts) continue;
+    loading = true;
+    setTimeout(() => {
+      addCards(per, good);
+      window.__portions++;
+      loading = false;
+      if (window.__portions >= parts) cont.remove();
+    }, 150);
+  }
+}).observe(cont);
+</script>
+</body></html>

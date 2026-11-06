@@ -1,0 +1,93 @@
+{
+  "ext_name": { "message": "slop-block" },
+  "ext_description": { "message": "Фильтрует видео YouTube по умным тегам." },
+
+  "popup_enabled": { "message": "Фильтр включён" },
+  "popup_mode_label": { "message": "Режим" },
+  "popup_mode_aria": { "message": "Режим фильтра" },
+  "popup_mode_allowlist": { "message": "Показывать только подходящие" },
+  "popup_mode_blocklist": { "message": "Скрывать подходящие" },
+  "popup_skip_subs": { "message": "Не фильтровать подписки" },
+  "popup_key_hint": { "message": "Нет ключа OpenRouter — фильтр не активен, всё показывается." },
+  "popup_settings_link": { "message": "Настройки" },
+  "popup_title_allowlist": { "message": "Показывать только видео, подходящие под теги" },
+  "popup_title_blocklist": { "message": "Скрывать видео, подходящие под теги" },
+  "popup_placeholder_allowlist": { "message": "Что показывать: продуктивность, IT, нейросети" },
+  "popup_placeholder_blocklist": { "message": "Что скрывать: кликбейт про похудение" },
+  "popup_input_label_allowlist": { "message": "Тег, который нужно показывать" },
+  "popup_input_label_blocklist": { "message": "Тег, который нужно скрывать" },
+  "popup_new_tag": { "message": "Новый тег" },
+  "popup_tag_enabled": { "message": "Тег включён" },
+  "popup_delete": { "message": "Удалить" },
+  "popup_add": { "message": "Добавить" },
+  "popup_counter": {
+    "message": "$N$/$MAX$",
+    "placeholders": { "n": { "content": "$1" }, "max": { "content": "$2" } }
+  },
+
+  "usage_title": { "message": "Траты" },
+  "usage_loading": { "message": "Загрузка…" },
+  "usage_no_key": { "message": "Ключ OpenRouter не задан" },
+  "usage_network": { "message": "Не удалось получить траты (сеть)" },
+  "usage_rate_limited": { "message": "Слишком много запросов, повторите позже" },
+  "usage_bad_response": { "message": "Неожиданный ответ OpenRouter" },
+  "usage_open_settings": { "message": "Открыть настройки" },
+  "usage_today": { "message": "Сегодня" },
+  "usage_total": { "message": "Всего" },
+  "usage_limit_remaining": { "message": "Остаток лимита" },
+  "usage_requests_today": { "message": "Запросов сегодня" },
+  "usage_tokens": { "message": "Токенов сегодня / всего" },
+  "usage_jev_estimate": { "message": "≈ по цене Jev (всего)" },
+  "usage_less_than": {
+    "message": "<$VALUE$",
+    "placeholders": { "value": { "content": "$1" } }
+  },
+  "usage_pair": {
+    "message": "$A$ / $B$",
+    "placeholders": { "a": { "content": "$1" }, "b": { "content": "$2" } }
+  },
+
+  "err_empty": { "message": "Введите текст тега." },
+  "err_too_long": {
+    "message": "Не больше $MAX$ символов.",
+    "placeholders": { "max": { "content": "$1" } }
+  },
+  "err_limit": {
+    "message": "Не больше $MAX$ тегов.",
+    "placeholders": { "max": { "content": "$1" } }
+  },
+  "err_duplicate": { "message": "Такой тег уже есть." },
+  "err_save": { "message": "Не удалось сохранить настройки." },
+  "err_model_required": { "message": "Укажите модель." },
+  "err_threshold_range": { "message": "Порог — число от 0 до 1." },
+
+  "options_title": { "message": "slop-block — настройки" },
+  "options_key_heading": { "message": "Ключ OpenRouter" },
+  "options_loading": { "message": "Загрузка…" },
+  "options_key_label": { "message": "Ключ API" },
+  "options_key_placeholder": { "message": "sk-or-…" },
+  "options_save": { "message": "Сохранить" },
+  "options_remove": { "message": "Удалить" },
+  "options_decision_heading": { "message": "Решение" },
+  "options_model": { "message": "Модель" },
+  "options_threshold": { "message": "Порог скрытия (0–1)" },
+  "options_save_settings": { "message": "Сохранить настройки" },
+  "options_key_saved_masked": {
+    "message": "Ключ сохранён ($MASK$).",
+    "placeholders": { "mask": { "content": "$1" } }
+  },
+  "options_key_not_set": { "message": "Ключ не задан." },
+  "msg_key_saved": { "message": "Ключ сохранён." },
+  "msg_key_required": { "message": "Введите ключ." },
+  "msg_key_removed": { "message": "Ключ удалён." },
+  "msg_settings_saved": { "message": "Настройки сохранены." },
+
+  "autofill_searching": { "message": "Ищу ещё подходящие видео…" },
+  "autofill_exhausted": { "message": "Больше подходящих не нашлось — прокрутите или измените теги" },
+  "autofill_unsafe": { "message": "Прокрутите вниз, чтобы загрузить ещё" },
+  "popup_feed_target": { "message": "Сколько видео держать на экране (6–30)" },
+  "err_bad_target": {
+    "message": "Введите число от $MIN$ до $MAX$.",
+    "placeholders": { "min": { "content": "$1" }, "max": { "content": "$2" } }
+  }
+}
