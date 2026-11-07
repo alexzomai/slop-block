@@ -83,7 +83,10 @@ function render(c: PopupController, s: Settings, message: PopupMessage): void {
     del.type = "button";
     del.textContent = t("popup_delete");
     del.addEventListener("click", () => void c.remove(tag.id));
-    li.append(cb, label, del);
+    const toggle = document.createElement("label"); // клик по тексту переключает флажок; «Удалить» вне label
+    toggle.className = "tag-toggle";
+    toggle.append(cb, label);
+    li.append(toggle, del);
     list.append(li);
   }
 }

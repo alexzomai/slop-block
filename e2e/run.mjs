@@ -148,6 +148,18 @@ try {
     await popup.fill("#text", "Кликбейт про похудение");
     await popup.click("#add button");
     check(`popup${tag}: дубликат отклонён`, (await popup.locator("#tags li").count()) === 1 && (await popup.textContent("#msg")).length > 0);
+    const tgt = await popup.evaluate(() => {
+      const cb = document.querySelector("#tags li input[type=checkbox]");
+      const del = document.querySelector("#tags li button");
+      return { h: cb.labels[0].getBoundingClientRect().height, labels: cb.labels.length, name: cb.getAttribute("aria-label"), delInLabel: del.closest("label") !== null };
+    });
+    check(`popup${tag}: флажок тега — цель ≥36 px, есть label, имя сохранено, «Удалить» вне label`, tgt.h >= 36 && tgt.labels === 1 && !!tgt.name && !tgt.delInLabel, JSON.stringify(tgt));
+    await popup.locator("#tags li .label").click();
+    await popup.waitForFunction(() => !document.querySelector("#tags li input[type=checkbox]").checked);
+    check(`popup${tag}: клик по тексту тега выключает его`, (await readStored(popup)).tags[0].enabled === false);
+    await popup.locator("#tags li .label").click();
+    await popup.waitForFunction(() => document.querySelector("#tags li input[type=checkbox]").checked);
+    check(`popup${tag}: повторный клик по тексту включает`, (await readStored(popup)).tags[0].enabled === true);
     await popup.locator("#tags li input[type=checkbox]").uncheck();
     let stored = await readStored(popup);
     check(`popup${tag}: выключение тега сохранено`, stored.tags[0].enabled === false);
@@ -554,9 +566,19 @@ try {
       p.on("console", (m) => m.type() === "error" && errors.push(`${page}@${width} console: ${m.text()}`));
       p.on("pageerror", (e) => errors.push(`${page}@${width} pageerror: ${e.message}`));
       await p.setViewportSize({ width, height: 800 });
+      const external = [];
+      p.on("request", (r) => !/^(chrome-extension|data|blob):/.test(r.url()) && external.push(r.url()));
       await p.goto(`chrome-extension://${extId}/${page}.html`);
       await p.waitForLoadState("load");
-      const overflow = await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      const fontInfo = await p.evaluate(async () => {
+        await document.fonts.load(`13px "JetBrains Mono"`, "Aa");
+        await document.fonts.load(`13px "JetBrains Mono"`, "Яя");
+        await document.fonts.ready;
+        return { family: getComputedStyle(document.body).fontFamily, ok: document.fonts.check('13px "JetBrains Mono"', "Aa"), cyr: document.fonts.check('13px "JetBrains Mono"', "Яя") };
+      });
+      check(`${page}@${width}: шрифт JetBrains Mono загружен локально (latin+cyrillic)`, fontInfo.family.startsWith('"JetBrains Mono"') && fontInfo.ok && fontInfo.cyr, JSON.stringify(fontInfo));
+      check(`${page}@${width}: нет внешних запросов`, external.length === 0, external.join(","));
+      const overflow =await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       check(`${page}@${width}: нет горизонтальной прокрутки`, overflow <= 0, `overflow=${overflow}`);
       const file = join(shots, `${page}-${width}.png`);
       await p.screenshot({ path: file, fullPage: true });

@@ -2,18 +2,6 @@
 
 **Take back your YouTube feed: describe what you want to watch, and an AI decision model hides the rest.**
 
-<p align="center">
-  <img src="docs/screenshots/feed.png" alt="YouTube feed showing only videos matching the tags" width="900">
-</p>
-<p align="center">
-  <img src="docs/screenshots/feed-autofill.png" alt="Feed autofill stopped with a 'No more matching videos found' message" width="900">
-</p>
-<p align="center">
-  <img src="docs/screenshots/popup.png" alt="Popup with tags, mode and spending" width="260">
-  &nbsp;
-  <img src="docs/screenshots/options.png" alt="Options page with key, model and threshold" width="420">
-</p>
-
 ## Features
 
 - Filter the YouTube feed with plain-language tags such as "productivity tips" or "programming tutorials".
