@@ -338,7 +338,85 @@ try {
       await spa.click("#go-home");
       check(`SPA${tag}: возврат на главную включает фильтр`, await waitState(spa, DENIED, ALLOWED));
       await spa.screenshot({ path: join(shots, `spa-home-${width}.png`), fullPage: true });
+      // 6b) SPA: главная → поиск → главная (filterSearch выключен по умолчанию)
+      await setStub(0, undefined);
+      await spa.click("#go-search");
+      check(`SPA${tag}: переход на поиск мгновенно показывает всё`, (await waitState(spa, [], ALL)) && (await gate(spa)) === null);
+      await spa.waitForTimeout(700);
+      check(`SPA${tag}: на поиске запросов нет`, (await calls()) === 0, `calls=${await calls()}`);
+      await spa.click("#go-home");
+      check(`SPA${tag}: возврат с поиска на главную включает фильтр`, await waitState(spa, DENIED, ALLOWED));
       await spa.close();
+
+      // 7) поиск по умолчанию: жёсткая загрузка /results, чекбокс, включение на лету
+      check(`поиск${tag}: чекбокс «Фильтровать результаты поиска» выключен по умолчанию`, !(await popup.isChecked("#filter-search")));
+      const lh = await popup.evaluate(() => document.getElementById("filter-search").closest("label").getBoundingClientRect().height);
+      check(`поиск${tag}: label чекбокса ≥ 36px`, lh >= 36, `h=${lh}`);
+      await setStub(0, undefined);
+      const srch = await context.newPage();
+      await srch.setViewportSize({ width, height: 900 });
+      await srch.goto("https://www.youtube.com/results?search_query=x", { waitUntil: "domcontentloaded" });
+      check(`поиск${tag}: карточки видны, шлюза нет`, (await waitState(srch, [], ALL)) && (await gate(srch)) === null);
+      await srch.waitForTimeout(900);
+      check(`поиск${tag}: 0 запросов к background`, (await calls()) === 0, `calls=${await calls()}`);
+      check(`поиск${tag}: индикатора нет`, await srch.evaluate(() => { const s = document.getElementById("slop-feed-status"); return !s || s.hidden; }));
+      await popup.locator("#filter-search").check();
+      check(`поиск${tag}: чекбокс включён — фильтр работает на открытой вкладке`, await waitState(srch, DENIED, ALLOWED), JSON.stringify(await stateOf(srch)));
+      check(`поиск${tag}: запросы пошли`, (await calls()) > 0);
+      await popup.locator("#filter-search").uncheck();
+      check(`поиск${tag}: чекбокс выключен — снова всё видно`, (await waitState(srch, [], ALL)) && (await gate(srch)) === null);
+      await srch.close();
+
+      // 8) окно SPA-перехода: pushState без yt-navigate-finish, задержанные ответы, переиспользованные узлы, смена href
+      {
+        const hiddenCount = (page) => page.evaluate((ids) => ids.filter((i) => getComputedStyle(document.getElementById(i)).display === "none").length, ALL);
+        const win = async (name, finishImmediately) => {
+          await setStub(1500, undefined);
+          const w = await context.newPage();
+          await w.setViewportSize({ width, height: 900 });
+          await w.goto("https://www.youtube.com/");
+          await w.waitForFunction(() => document.documentElement.getAttribute("data-slop-gate") === "allowlist");
+          for (let i = 0; i < 100 && (await calls()) < 3; i++) await w.waitForTimeout(20);
+          const before = await calls();
+          await w.evaluate((imm) => {
+            document.dispatchEvent(new Event("yt-navigate-start"));
+            history.pushState({}, "", "/results?search_query=x");
+            document.querySelectorAll("a[href^='/watch?v=']").forEach((a, i) => a.setAttribute("href", `/watch?v=find${String(i).padStart(7, "0")}`));
+            if (imm) document.dispatchEvent(new Event("yt-navigate-finish"));
+          }, finishImmediately);
+          const samples = [];
+          for (let i = 0; i < 6; i++) { // окно ~2.4 с: ответы (1.5 с) приходят внутри окна, finish не отправлен
+            samples.push({ gate: await gate(w), hidden: await hiddenCount(w), calls: await calls() });
+            await w.waitForTimeout(400);
+          }
+          const bad = samples.filter((x) => x.gate !== null || x.hidden !== 0 || x.calls !== before);
+          check(`${name}${tag}: в окне перехода шлюза нет, скрытых 0, новых запросов 0 (замеров ${samples.length})`, bad.length === 0, JSON.stringify(samples));
+          if (!finishImmediately) {
+            await w.evaluate(() => document.dispatchEvent(new Event("yt-navigate-finish")));
+            await w.waitForTimeout(500);
+            check(`${name}${tag}: после finish по-прежнему ничего не скрыто, запросов нет`, (await hiddenCount(w)) === 0 && (await gate(w)) === null && (await calls()) === before, `calls=${await calls()}`);
+          }
+          await w.close();
+        };
+        await win("окно SPA (finish задержан)", false);
+        await win("контроль (finish сразу)", true);
+
+        // обратный переход results → home в окне до finish: фильтр включается без finish и карточки не теряются
+        await setStub(0, undefined);
+        const back = await context.newPage();
+        await back.setViewportSize({ width, height: 900 });
+        await back.goto("https://www.youtube.com/results?search_query=x");
+        check(`окно SPA${tag}: на поиске всё видно`, await waitState(back, [], ALL));
+        await back.evaluate(() => {
+          document.dispatchEvent(new Event("yt-navigate-start"));
+          history.pushState({}, "", "/");
+        });
+        check(`окно SPA${tag}: results → home до finish — фильтр включился`, await waitState(back, DENIED, ALLOWED), JSON.stringify(await stateOf(back)));
+        await back.evaluate(() => document.dispatchEvent(new Event("yt-navigate-finish")));
+        await back.waitForTimeout(400);
+        check(`окно SPA${tag}: после finish состояние то же, карточки не потеряны`, await waitState(back, DENIED, ALLOWED));
+        await back.close();
+      }
       await popup.close();
     }
     // --- feed-autofill: лента с continuation (эмуляция IntersectionObserver YouTube) ---
@@ -469,6 +547,7 @@ try {
         const idle = [
           ["blocklist", "/?good=0", { target: 12, mode: "blocklist" }, undefined],
           ["подписки (bypass)", "/feed/subscriptions?good=0", { target: 12 }, undefined],
+          ["поиск (по умолчанию)", "/results?search_query=x&good=0", { target: 12 }, undefined],
           ["no_key", "/?good=0", { target: 12 }, "no_key"],
         ];
         for (const [name, path, opts, force] of idle) {

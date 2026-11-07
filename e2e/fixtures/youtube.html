@@ -20,6 +20,7 @@
 <ytm-shorts-lockup-view-model id="sh2"><a href="/shorts/short000002" aria-label="Кот и огурец, 1 млн просмотров"></a></ytm-shorts-lockup-view-model>
 <button id="more" type="button">Подгрузить ещё</button>
 <button id="go-subs" type="button">Подписки</button>
+<button id="go-search" type="button">Поиск</button>
 <button id="go-home" type="button">Главная</button>
 <script>
 document.getElementById('more').addEventListener('click', () => {
@@ -30,6 +31,7 @@ document.getElementById('more').addEventListener('click', () => {
 });
 const nav = (p) => () => { history.pushState({}, "", p); document.dispatchEvent(new CustomEvent("yt-navigate-finish")); };
 document.getElementById('go-subs').addEventListener('click', nav('/feed/subscriptions'));
+document.getElementById('go-search').addEventListener('click', nav('/results?search_query=x'));
 document.getElementById('go-home').addEventListener('click', nav('/'));
 </script>
 </body></html>

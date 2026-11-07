@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS, effectiveState, normalize, setMode, setSkipSubscriptions, type Settings } from "../src/shared/settings";
 import { fromItems, toItems } from "../src/shared/storage";
 
-const base = (o: Partial<Settings> = {}): Settings => ({ enabled: true, tags: [{ id: "a", text: "IT", enabled: true }], mode: "allowlist", skipSubscriptions: true, feedTarget: 12, ...o });
+const base = (o: Partial<Settings> = {}): Settings => ({ enabled: true, tags: [{ id: "a", text: "IT", enabled: true }], mode: "allowlist", skipSubscriptions: true, filterSearch: false, feedTarget: 12, ...o });
 
 describe("mode / skipSubscriptions: миграция и нормализация", () => {
   it("пустое хранилище → allowlist, skip=true", () => {
-    expect(normalize(undefined)).toEqual({ enabled: true, tags: [], mode: "allowlist", skipSubscriptions: true, feedTarget: 12 });
+    expect(normalize(undefined)).toEqual({ enabled: true, tags: [], mode: "allowlist", skipSubscriptions: true, filterSearch: false, feedTarget: 12 });
     expect(DEFAULT_SETTINGS.mode).toBe("allowlist");
     expect(DEFAULT_SETTINGS.skipSubscriptions).toBe(true);
   });
@@ -23,7 +23,7 @@ describe("mode / skipSubscriptions: миграция и нормализация
     expect(normalize({ skipSubscriptions: v, feedTarget: 12 }).skipSubscriptions).toBe(true);
   });
   it("round-trip через item'ы", () => {
-    const s = base({ mode: "blocklist", skipSubscriptions: false, feedTarget: 12 });
+    const s = base({ mode: "blocklist", skipSubscriptions: false, filterSearch: false, feedTarget: 12 });
     expect(fromItems(toItems(s))).toEqual(s);
   });
   it("setMode / setSkipSubscriptions", () => {
@@ -48,7 +48,7 @@ describe("effectiveState", () => {
     expect(e.active).toBe(false);
   });
   it("подписки без skip → активен", () => {
-    expect(effectiveState(base({ skipSubscriptions: false, feedTarget: 12 }), { onSubscriptions: true, keyMissing: false }).active).toBe(true);
+    expect(effectiveState(base({ skipSubscriptions: false, filterSearch: false, feedTarget: 12 }), { onSubscriptions: true, keyMissing: false }).active).toBe(true);
   });
   it("blocklist тоже обходит подписки", () => {
     expect(effectiveState(base({ mode: "blocklist" }), { onSubscriptions: true, keyMissing: false }).active).toBe(false);

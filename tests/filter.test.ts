@@ -4,7 +4,7 @@ import type { DecideRequest, DecideResponse, VideoMeta } from "../src/shared/dec
 import type { Settings } from "../src/shared/settings";
 
 interface Card { id: string; title: string; hidden: boolean }
-const S = (tags: string[], enabled = true): Settings => ({ enabled, tags: tags.map((t, i) => ({ id: `t${i}`, text: t, enabled: true })), mode: "blocklist", skipSubscriptions: false, feedTarget: 12 });
+const S = (tags: string[], enabled = true): Settings => ({ enabled, tags: tags.map((t, i) => ({ id: `t${i}`, text: t, enabled: true })), mode: "blocklist", skipSubscriptions: false, filterSearch: false, feedTarget: 12 });
 const ok = (hide: boolean): DecideResponse => ({ ok: true, hide, matchedTagIds: hide ? ["t0"] : [], probabilities: {} });
 
 function setup(settings: Settings, answer: (r: DecideRequest) => Promise<DecideResponse> | DecideResponse) {

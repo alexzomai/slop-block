@@ -9,7 +9,7 @@ beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(0); });
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
 type Outcome = DecideResponse | "throw" | "undefined";
-const TAGS = { enabled: true, tags: [{ id: "a", text: "tag", enabled: true }], mode: "blocklist" as const, skipSubscriptions: false, feedTarget: 12 };
+const TAGS = { enabled: true, tags: [{ id: "a", text: "tag", enabled: true }], mode: "blocklist" as const, skipSubscriptions: false, filterSearch: false, feedTarget: 12 };
 
 async function run(outcome: Outcome, horizonMs = 400_000) {
   const stamps: number[] = [];

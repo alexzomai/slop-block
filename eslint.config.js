@@ -24,7 +24,7 @@ export default tseslint.config(
   {
     // колбэки page.evaluate выполняются в браузере
     files: ["e2e/**/*.mjs"],
-    languageOptions: { globals: { document: "readonly", Response: "readonly", chrome: "readonly" } },
+    languageOptions: { globals: { document: "readonly", history: "readonly", Event: "readonly", Response: "readonly", chrome: "readonly" } },
   },
   {
     files: ["tests/**/*.ts"],

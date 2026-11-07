@@ -4,7 +4,7 @@ import type { DecideRequest, DecideResponse } from "../src/shared/decision";
 import type { Mode, Settings } from "../src/shared/settings";
 
 interface Card { id: string; hidden: boolean; shown: boolean }
-const S = (mode: Mode, o: Partial<Settings> = {}): Settings => ({ enabled: true, tags: [{ id: "t0", text: "IT", enabled: true }], mode, skipSubscriptions: true, feedTarget: 12, ...o });
+const S = (mode: Mode, o: Partial<Settings> = {}): Settings => ({ enabled: true, tags: [{ id: "t0", text: "IT", enabled: true }], mode, skipSubscriptions: true, filterSearch: false, feedTarget: 12, ...o });
 const ok = (hide: boolean, matched: string[]): DecideResponse => ({ ok: true, hide, matchedTagIds: matched, probabilities: {} });
 type Answer = (r: DecideRequest) => Promise<DecideResponse> | DecideResponse;
 
@@ -182,8 +182,8 @@ describe("подписки", () => {
     expect(a.visible(a.cards[0]!)).toBe(true);
   });
   it("skip выключен: подписки фильтруются как лента", async () => {
-    const a = setup(S("allowlist", { skipSubscriptions: false, feedTarget: 12 }), () => ok(false, []));
-    a.f.reconfigure(S("allowlist", { skipSubscriptions: false, feedTarget: 12 }), { onSubscriptions: true });
+    const a = setup(S("allowlist", { skipSubscriptions: false, filterSearch: false, feedTarget: 12 }), () => ok(false, []));
+    a.f.reconfigure(S("allowlist", { skipSubscriptions: false, filterSearch: false, feedTarget: 12 }), { onSubscriptions: true });
     a.f.schedule(); await at(400);
     expect(a.sent).toHaveLength(1);
     expect(a.visible(a.cards[0]!)).toBe(false);

@@ -19,7 +19,7 @@ describe("нормализация тега", () => {
     expect(normalizeTagText("a\nb\n\n c")).toBe("a b c");
     expect(normalizeTagText("  a \r\n\tb  ")).toBe("a b");
   });
-  const S0: Settings = { enabled: true, tags: [], mode: "allowlist", skipSubscriptions: true, feedTarget: 12 };
+  const S0: Settings = { enabled: true, tags: [], mode: "allowlist", skipSubscriptions: true, filterSearch: false, feedTarget: 12 };
   it("addTag сохраняет тег одной строкой", () => {
     const r = addTag(S0, "a\nb\n\n c", () => "id1");
     expect(r.error).toBeUndefined();

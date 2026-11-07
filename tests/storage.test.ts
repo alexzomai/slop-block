@@ -33,7 +33,7 @@ function fakeArea(failSet = false) {
 }
 
 function worst(chars: (i: number) => string): Settings {
-  let s: Settings = { enabled: true, tags: [], mode: "allowlist", skipSubscriptions: true, feedTarget: 12 };
+  let s: Settings = { enabled: true, tags: [], mode: "allowlist", skipSubscriptions: true, filterSearch: false, feedTarget: 12 };
   for (let i = 0; i < MAX_TAGS; i++) {
     const head = String.fromCharCode(0x41 + i); // уникальность: не равные без учёта регистра
     s = addTag(s, head + chars(i).repeat(MAX_TEXT)  .slice(0, MAX_TEXT - 1), () => crypto.randomUUID()).settings;
@@ -70,8 +70,8 @@ describe("storage: формат и квоты", () => {
 
   it("пусто → умолчания; save/load круг; осиротевшие теги удаляются", async () => {
     const { area, data } = fakeArea();
-    expect(await loadSettings(area)).toEqual({ enabled: true, tags: [], mode: "allowlist", skipSubscriptions: true, feedTarget: 12 });
-    const two = addTag(addTag({ enabled: true, tags: [], mode: "allowlist", skipSubscriptions: true, feedTarget: 12 }, "a", () => "A").settings, "b", () => "B").settings;
+    expect(await loadSettings(area)).toEqual({ enabled: true, tags: [], mode: "allowlist", skipSubscriptions: true, filterSearch: false, feedTarget: 12 });
+    const two = addTag(addTag({ enabled: true, tags: [], mode: "allowlist", skipSubscriptions: true, filterSearch: false, feedTarget: 12 }, "a", () => "A").settings, "b", () => "B").settings;
     await saveSettings(area, two);
     expect(Object.keys(data).sort()).toEqual(["slop.settings", "slop.tag.A", "slop.tag.B"]);
     await saveSettings(area, { ...two, enabled: false, tags: two.tags.slice(1) });
@@ -81,13 +81,13 @@ describe("storage: формат и квоты", () => {
 
   it("повреждённые данные: нет item тега, мусорный order, небезопасный id", () => {
     expect(fromItems({ "slop.settings": { enabled: true, order: ["A", 5, "../x", "B"] }, "slop.tag.B": { text: "ok", enabled: true } }))
-      .toEqual({ enabled: true, tags: [{ id: "B", text: "ok", enabled: true }], mode: "allowlist", skipSubscriptions: true, feedTarget: 12 });
+      .toEqual({ enabled: true, tags: [{ id: "B", text: "ok", enabled: true }], mode: "allowlist", skipSubscriptions: true, filterSearch: false, feedTarget: 12 });
     expect(fromItems({ "slop.settings": "oops" })).toEqual(normalize(undefined));
   });
 
   it("отказ set() — исключение, хранилище не меняется", async () => {
     const { area, data } = fakeArea(true);
-    await expect(saveSettings(area, { enabled: false, tags: [], mode: "allowlist", skipSubscriptions: true, feedTarget: 12 })).rejects.toThrow();
+    await expect(saveSettings(area, { enabled: false, tags: [], mode: "allowlist", skipSubscriptions: true, filterSearch: false, feedTarget: 12 })).rejects.toThrow();
     expect(data).toEqual({});
   });
 

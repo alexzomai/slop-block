@@ -8,6 +8,7 @@
   "popup_mode_allowlist": { "message": "Show only matching" },
   "popup_mode_blocklist": { "message": "Hide matching" },
   "popup_skip_subs": { "message": "Don't filter subscriptions" },
+  "popup_filter_search": { "message": "Filter search results" },
   "popup_key_hint": { "message": "No OpenRouter key — the filter is inactive, everything is shown." },
   "popup_settings_link": { "message": "Settings" },
   "popup_title_allowlist": { "message": "Only videos matching the tags are shown" },

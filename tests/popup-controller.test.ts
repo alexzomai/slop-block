@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PopupController } from "../src/popup/controller";
 import type { Settings } from "../src/shared/settings";
 
-const empty: Settings = { enabled: true, tags: [], mode: "allowlist", skipSubscriptions: true, feedTarget: 12 };
+const empty: Settings = { enabled: true, tags: [], mode: "allowlist", skipSubscriptions: true, filterSearch: false, feedTarget: 12 };
 
 function setup(failWhen: (s: Settings) => boolean = () => false) {
   let stored: Settings = empty; // «storage»

@@ -4,7 +4,7 @@ import type { DecideResponse } from "../src/shared/decision";
 import type { Settings } from "../src/shared/settings";
 
 interface Card { id: string; shown: boolean }
-const S = (o: Partial<Settings> = {}): Settings => ({ enabled: true, tags: [{ id: "t0", text: "IT", enabled: true }], mode: "allowlist", skipSubscriptions: true, feedTarget: 12, ...o });
+const S = (o: Partial<Settings> = {}): Settings => ({ enabled: true, tags: [{ id: "t0", text: "IT", enabled: true }], mode: "allowlist", skipSubscriptions: true, filterSearch: false, feedTarget: 12, ...o });
 const yes: DecideResponse = { ok: true, hide: true, matchedTagIds: ["t0"], probabilities: {} };
 const no: DecideResponse = { ok: true, hide: false, matchedTagIds: [], probabilities: {} };
 

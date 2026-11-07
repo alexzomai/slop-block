@@ -8,6 +8,7 @@
   "popup_mode_allowlist": { "message": "Показывать только подходящие" },
   "popup_mode_blocklist": { "message": "Скрывать подходящие" },
   "popup_skip_subs": { "message": "Не фильтровать подписки" },
+  "popup_filter_search": { "message": "Фильтровать результаты поиска" },
   "popup_key_hint": { "message": "Нет ключа OpenRouter — фильтр не активен, всё показывается." },
   "popup_settings_link": { "message": "Настройки" },
   "popup_title_allowlist": { "message": "Показывать только видео, подходящие под теги" },

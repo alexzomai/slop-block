@@ -5,7 +5,7 @@ import { PopupController } from "../src/popup/controller";
 import { modeTexts } from "../src/popup/texts";
 import type { Settings } from "../src/shared/settings";
 
-const S0: Settings = { enabled: true, tags: [], mode: "allowlist", skipSubscriptions: true, feedTarget: 12 };
+const S0: Settings = { enabled: true, tags: [], mode: "allowlist", skipSubscriptions: true, filterSearch: false, feedTarget: 12 };
 
 describe("PopupController: режим и подписки", () => {
   it("setMode / setSkipSubscriptions сохраняются и рендерятся", async () => {

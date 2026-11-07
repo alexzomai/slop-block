@@ -5,3 +5,10 @@ const SUBSCRIPTIONS = /^\/feed\/subscriptions\/?$/;
 export function isSubscriptionsPath(pathname: unknown): boolean {
   return typeof pathname === "string" && SUBSCRIPTIONS.test(pathname);
 }
+
+const SEARCH = /^\/results\/?$/;
+
+/** `pathname` страницы результатов поиска (без query/hash). `/hashtag/…` сюда не входит. */
+export function isSearchPath(pathname: unknown): boolean {
+  return typeof pathname === "string" && SEARCH.test(pathname);
+}

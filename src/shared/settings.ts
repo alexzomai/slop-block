@@ -3,7 +3,7 @@ import type { SmartTag } from "./decision";
 export interface StoredTag { id: string; text: string; enabled: boolean }
 /** allowlist — показывать только подходящие; blocklist — скрывать подходящие. */
 export type Mode = "allowlist" | "blocklist";
-export interface Settings { enabled: boolean; tags: StoredTag[]; mode: Mode; skipSubscriptions: boolean; feedTarget: number }
+export interface Settings { enabled: boolean; tags: StoredTag[]; mode: Mode; skipSubscriptions: boolean; filterSearch: boolean; feedTarget: number }
 export type AddError = "empty" | "too_long" | "limit" | "duplicate";
 
 export const MAX_TAGS = 20;
@@ -14,7 +14,7 @@ export const ID_RE = /^[\w-]{1,64}$/;
 export const MIN_TARGET = 6;
 export const MAX_TARGET = 30;
 export const DEFAULT_TARGET = 12;
-export const DEFAULT_SETTINGS: Settings = { enabled: true, tags: [], mode: "allowlist", skipSubscriptions: true, feedTarget: DEFAULT_TARGET };
+export const DEFAULT_SETTINGS: Settings = { enabled: true, tags: [], mode: "allowlist", skipSubscriptions: true, filterSearch: false, feedTarget: DEFAULT_TARGET };
 
 /** Цель ленты: целое 6–30. Не число / NaN / Infinity / нечисловая строка → 12. */
 export function clampTarget(v: unknown): number {
@@ -29,6 +29,7 @@ export function normalize(raw: unknown): Settings {
   const enabled = typeof r.enabled === "boolean" ? r.enabled : true;
   const mode: Mode = r.mode === "blocklist" ? "blocklist" : "allowlist";
   const skipSubscriptions = typeof r.skipSubscriptions === "boolean" ? r.skipSubscriptions : true;
+  const filterSearch = typeof r.filterSearch === "boolean" ? r.filterSearch : false;
   const tags: StoredTag[] = [];
   const ids = new Set<string>();
   if (Array.isArray(r.tags)) {
@@ -43,7 +44,7 @@ export function normalize(raw: unknown): Settings {
       tags.push({ id: o.id, text, enabled: typeof o.enabled === "boolean" ? o.enabled : true });
     }
   }
-  return { enabled, tags, mode, skipSubscriptions, feedTarget: clampTarget(r.feedTarget) };
+  return { enabled, tags, mode, skipSubscriptions, filterSearch, feedTarget: clampTarget(r.feedTarget) };
 }
 
 /** Тег — одна строка: переносы и серии пробельных символов схлопываются в один пробел. */
@@ -84,12 +85,13 @@ export function activeTags(s: Settings): SmartTag[] {
 export const setMode = (s: Settings, mode: Mode): Settings => ({ ...s, mode });
 export const setFeedTarget = (s: Settings, v: number): Settings => ({ ...s, feedTarget: clampTarget(v) });
 export const setSkipSubscriptions = (s: Settings, skipSubscriptions: boolean): Settings => ({ ...s, skipSubscriptions });
+export const setFilterSearch = (s: Settings, filterSearch: boolean): Settings => ({ ...s, filterSearch });
 
-export interface FilterContext { onSubscriptions: boolean; keyMissing: boolean }
+export interface FilterContext { onSubscriptions: boolean; onSearch?: boolean; keyMissing: boolean }
 
 /** Единая точка решения «работает ли фильтр сейчас» и с какими тегами. */
 export function effectiveState(s: Settings, ctx: FilterContext): { active: boolean; mode: Mode; tags: SmartTag[] } {
-  const bypass = s.skipSubscriptions && ctx.onSubscriptions;
+  const bypass = (s.skipSubscriptions && ctx.onSubscriptions) || (!s.filterSearch && ctx.onSearch === true);
   const tags = bypass ? [] : activeTags(s);
   return { active: tags.length > 0 && !ctx.keyMissing, mode: s.mode, tags };
 }

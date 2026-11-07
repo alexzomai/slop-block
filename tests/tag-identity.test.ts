@@ -21,7 +21,7 @@ const variants = (b: string): string[] => {
 const ALL = [...BASES.flatMap(variants), "other", "IT  video", "it videos2", "itvideos"];
 
 /** Состояние «как из хранилища»: текст не нормализуется (тег мог быть сохранён прежней версией). */
-const stored = (text: string): Settings => normalize({ enabled: true, mode: "allowlist", skipSubscriptions: true, tags: [{ id: "old", text, enabled: true }] });
+const stored = (text: string): Settings => normalize({ enabled: true, mode: "allowlist", skipSubscriptions: true, filterSearch: false, tags: [{ id: "old", text, enabled: true }] });
 
 describe("tagIdentity — единая идентичность тегов", () => {
   it("свойство: равны по tagIdentity ⇔ addTag при существующем a отклоняет b как дубликат", () => {

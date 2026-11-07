@@ -60,6 +60,7 @@ function render(c: PopupController, s: Settings, message: PopupMessage): void {
   ($("enabled") as HTMLInputElement).checked = s.enabled;
   ($("mode") as HTMLSelectElement).value = s.mode;
   ($("skip-subs") as HTMLInputElement).checked = s.skipSubscriptions;
+  ($("filter-search") as HTMLInputElement).checked = s.filterSearch;
   ($("feed-target") as HTMLInputElement).value = String(s.feedTarget);
   const mt = modeTexts(s.mode);
   ($("text") as HTMLTextAreaElement).placeholder = mt.placeholder;
@@ -126,6 +127,7 @@ async function main(): Promise<void> {
   $("enabled").addEventListener("change", (e) => void controller.setEnabled((e.target as HTMLInputElement).checked));
   $("mode").addEventListener("change", (e) => void controller.setMode((e.target as HTMLSelectElement).value as Mode));
   $("skip-subs").addEventListener("change", (e) => void controller.setSkipSubscriptions((e.target as HTMLInputElement).checked));
+  $("filter-search").addEventListener("change", (e) => void controller.setFilterSearch((e.target as HTMLInputElement).checked));
   $("feed-target").addEventListener("change", (e) => void controller.setFeedTarget((e.target as HTMLInputElement).valueAsNumber));
   const input = $("text") as HTMLTextAreaElement;
   const submit = (): void => {

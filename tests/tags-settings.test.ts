@@ -8,13 +8,13 @@ const id = () => `id${++n}`;
 
 describe("normalize", () => {
   it("пустое хранилище → значения по умолчанию", () => {
-    expect(normalize(undefined)).toEqual({ enabled: true, tags: [], mode: "allowlist", skipSubscriptions: true, feedTarget: 12 });
+    expect(normalize(undefined)).toEqual({ enabled: true, tags: [], mode: "allowlist", skipSubscriptions: true, filterSearch: false, feedTarget: 12 });
     expect(normalize(null)).toEqual(DEFAULT_SETTINGS);
   });
   it("мусор отбрасывается", () => {
-    expect(normalize({ enabled: "yes", tags: "x" })).toEqual({ enabled: true, tags: [], mode: "allowlist", skipSubscriptions: true, feedTarget: 12 });
+    expect(normalize({ enabled: "yes", tags: "x" })).toEqual({ enabled: true, tags: [], mode: "allowlist", skipSubscriptions: true, filterSearch: false, feedTarget: 12 });
     const s = normalize({ enabled: false, tags: [{ id: "a", text: " ok ", enabled: true }, { id: 1, text: "x" }, { id: "b" }, null, { id: "c", text: "", enabled: true }, { id: "a", text: "dup" }] });
-    expect(s).toEqual({ enabled: false, tags: [{ id: "a", text: "ok", enabled: true }], mode: "allowlist", skipSubscriptions: true, feedTarget: 12 });
+    expect(s).toEqual({ enabled: false, tags: [{ id: "a", text: "ok", enabled: true }], mode: "allowlist", skipSubscriptions: true, filterSearch: false, feedTarget: 12 });
   });
   it("не больше MAX_TAGS и обрезка текста", () => {
     const tags = Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, text: "x".repeat(300), enabled: true }));

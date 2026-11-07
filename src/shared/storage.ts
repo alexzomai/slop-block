@@ -20,7 +20,7 @@ export interface ChangeEmitter {
 /** Представление настроек в виде набора item'ов storage. */
 export function toItems(s: Settings): Record<string, unknown> {
   const items: Record<string, unknown> = {
-    [STORAGE_KEY]: { enabled: s.enabled, order: s.tags.map((t) => t.id), mode: s.mode, skipSubscriptions: s.skipSubscriptions, feedTarget: s.feedTarget },
+    [STORAGE_KEY]: { enabled: s.enabled, order: s.tags.map((t) => t.id), mode: s.mode, skipSubscriptions: s.skipSubscriptions, filterSearch: s.filterSearch, feedTarget: s.feedTarget },
   };
   for (const t of s.tags) items[tagKey(t.id)] = { text: t.text, enabled: t.enabled };
   return items;
@@ -35,7 +35,7 @@ export function fromItems(items: Record<string, unknown>): Settings {
     const t = typeof id === "string" ? items[tagKey(id)] : undefined;
     return typeof t === "object" && t !== null ? { id, ...(t as object) } : null;
   });
-  return normalize({ enabled: h.enabled, tags, mode: h.mode, skipSubscriptions: h.skipSubscriptions, feedTarget: h.feedTarget });
+  return normalize({ enabled: h.enabled, tags, mode: h.mode, skipSubscriptions: h.skipSubscriptions, filterSearch: h.filterSearch, feedTarget: h.feedTarget });
 }
 
 export async function loadSettings(area: AreaLike): Promise<Settings> {

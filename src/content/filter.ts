@@ -15,9 +15,11 @@ export interface FilterDeps<C> {
   send(req: DecideRequest): Promise<DecideResponse>;
   /** После каждого прохода scan() (для автодогрузки ленты). Исключения глушатся. */
   onSettled?(): void;
+  /** Актуальный контекст страницы (по location). Если задан, проверяется перед каждой отправкой и применением ответа. */
+  context?(): Context;
 }
 
-export interface Context { onSubscriptions: boolean }
+export interface Context { onSubscriptions: boolean; onSearch?: boolean }
 
 export const DEBOUNCE_MS = 300;
 export const MAX_PARALLEL = 3;
@@ -36,6 +38,7 @@ export class FeedFilter<C> {
   private keyMissing = false;
   private lastSettings = "";
   private ctx: Context = { onSubscriptions: false };
+  private settings: Settings | undefined;
   private decisions = new Map<string, Decision>(); // videoId → решение
   private queued = new Set<string>(); // в очереди или в полёте
   private queue: VideoMeta[] = [];
@@ -52,6 +55,7 @@ export class FeedFilter<C> {
   private timer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(private deps: FilterDeps<C>, settings: Settings, ctx: Context = { onSubscriptions: false }) {
+    this.settings = settings;
     this.configure(settings, ctx);
   }
 
@@ -70,6 +74,7 @@ export class FeedFilter<C> {
 
   /** Единая точка входа для смены настроек / страницы. Состояние применяется сразу, без таймеров и запросов. */
   reconfigure(settings: Settings, ctx: Context): void {
+    this.settings = settings;
     this.configure(settings, ctx);
     this.resetVisuals();
     if (!this.active) {
@@ -79,6 +84,18 @@ export class FeedFilter<C> {
     this.setGate(this.mode === "allowlist");
     this.scan(false); // только известные решения, без новых запросов
     this.schedule();
+  }
+
+  /**
+   * Единая точка актуализации контекста: если страница (location) уже другая, чем применённый контекст,
+   * состояние пересчитывается немедленно: поколение очереди сбрасывается, шлюз и скрытие снимаются.
+   * Вызывается перед каждым проходом, отправкой и применением ответа, независимо от порядка SPA-событий.
+   */
+  syncContext(): void {
+    const live = this.deps.context?.();
+    if (!live || !this.settings) return;
+    if (!!live.onSubscriptions === !!this.ctx.onSubscriptions && !!live.onSearch === !!this.ctx.onSearch) return;
+    this.reconfigure(this.settings, live);
   }
 
   private configure(settings: Settings, ctx: Context): boolean {
@@ -159,6 +176,7 @@ export class FeedFilter<C> {
   }
 
   private doScan(enqueue: boolean): void {
+    this.syncContext();
     if (!this.active) {
       this.waiting = 0;
       this.resetVisuals();
@@ -193,7 +211,10 @@ export class FeedFilter<C> {
   }
 
   private pump(): void {
+    this.syncContext();
     while (this.active && this.running < MAX_PARALLEL && this.queue.length > 0) {
+      this.syncContext(); // прямо перед отправкой
+      if (!this.active) break;
       const meta = this.queue.shift()!;
       this.running++;
       void this.run(meta, this.generation);
@@ -221,6 +242,7 @@ export class FeedFilter<C> {
   private async run(meta: VideoMeta, gen: number): Promise<void> {
     const res = await this.attempt(meta);
     this.running--;
+    this.syncContext(); // ответ, полученный на другом контексте, не применяется (поколение сброшено)
     if (gen === this.generation) {
       this.queued.delete(meta.videoId);
       if (res === "threw") {

@@ -1,5 +1,5 @@
 import type { DecideRequest, DecideResponse } from "../shared/decision";
-import { isSubscriptionsPath } from "../shared/paths";
+import { isSearchPath, isSubscriptionsPath } from "../shared/paths";
 import type { Settings } from "../shared/settings";
 import { loadSettings, subscribeSettings } from "../shared/storage";
 import { Autofill } from "./autofill";
@@ -22,6 +22,7 @@ const failOpen = (): void => root.removeAttribute(GATE);
 const watchdog = setTimeout(failOpen, WATCHDOG_MS);
 
 const onSubs = (): boolean => isSubscriptionsPath(location.pathname);
+const onSearch = (): boolean => isSearchPath(location.pathname);
 
 async function main(): Promise<void> {
   let current: Settings = await loadSettings(chrome.storage.sync);
@@ -43,6 +44,7 @@ async function main(): Promise<void> {
   const filter: FeedFilter<Element> = new FeedFilter<Element>(
     {
       onSettled: () => evaluateSoon(),
+      context: () => ({ onSubscriptions: onSubs(), onSearch: onSearch() }),
       findCards: () => findCards(document),
       extract: (c) => extractMeta(c),
       hide: (c) => hideCard(c as HTMLElement),
@@ -53,7 +55,7 @@ async function main(): Promise<void> {
       send: (req: DecideRequest) => chrome.runtime.sendMessage(req) as Promise<DecideResponse>,
     },
     current,
-    { onSubscriptions: onSubs() },
+    { onSubscriptions: onSubs(), onSearch: onSearch() },
   );
   const autofill = new Autofill({
     snapshot: () => {
@@ -80,9 +82,9 @@ async function main(): Promise<void> {
   const reconfigure = (): void => {
     path = location.pathname;
     // Бюджет подгрузок сбрасывается только при реальной смене настроек или страницы.
-    autofill.resetIfChanged(`${path}|${JSON.stringify(current)}|${onSubs()}`);
+    autofill.resetIfChanged(`${path}|${JSON.stringify(current)}|${onSubs()}|${onSearch()}`);
     try {
-      filter.reconfigure(current, { onSubscriptions: onSubs() });
+      filter.reconfigure(current, { onSubscriptions: onSubs(), onSearch: onSearch() });
     } catch {
       failOpen();
     }
@@ -98,6 +100,17 @@ async function main(): Promise<void> {
     }, failOpen);
   });
   // SPA: события YouTube + страховка при каждом проходе наблюдателя (одно сравнение строк).
+  // Ранние сигналы перехода: контекст пересчитывается до finish (иначе старые ответы действуют в окне перехода).
+  const early = (): void => {
+    try {
+      filter.syncContext();
+    } catch {
+      failOpen();
+    }
+  };
+  document.addEventListener("yt-navigate-start", early);
+  const nav = (window as unknown as { navigation?: EventTarget }).navigation;
+  nav?.addEventListener("currententrychange", early);
   document.addEventListener("yt-navigate-finish", reconfigure);
   window.addEventListener("popstate", reconfigure);
   // Следим только за childList: собственное скрытие меняет атрибуты и цикла не вызывает.
