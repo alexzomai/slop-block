@@ -2,6 +2,7 @@
   "name": "slop-block",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "description": "Chrome MV3 extension: filters YouTube videos by smart tags",
   "type": "module",
   "scripts": {
@@ -11,7 +12,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "e2e": "node e2e/all.mjs",
-    "screenshots": "node scripts/screenshots.mjs"
+    "screenshots": "node scripts/screenshots.mjs",
+    "icons": "node scripts/icons.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

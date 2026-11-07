@@ -2,7 +2,9 @@ import { tagIdentity } from "../shared/settings";
 import type { KV } from "./storage";
 
 /** Кэш вероятностей по паре (videoId, нормализованный текст тега). Формат и расчёт размера — design.md, D1–D5. */
-export const SHARD_PREFIX = "dc2:";
+/** Версия кэша = версия разбиения/промпта. dc2 — вопрос по целому тексту тега (конъюнктивный), dc3 — вопрос по под-теме. */
+export const SHARD_PREFIX = "dc3:";
+export const OLD_SHARD_PREFIX = "dc2:";
 export const LEGACY_KEY = "decisionCache";
 export const DEFAULT_TTL_MS = 30 * 24 * 3600 * 1000;
 export const DEFAULT_MAX_PAIRS = 20000;
@@ -28,6 +30,7 @@ function shardOf(videoId: string): string {
   for (const b of new TextEncoder().encode(videoId)) h = Math.imul(h ^ b, 0x01000193) >>> 0;
   return SHARD_PREFIX + (h & (SHARDS - 1)).toString(16).padStart(2, "0");
 }
+const OLD_SHARDS = Array.from({ length: SHARDS }, (_, i) => OLD_SHARD_PREFIX + i.toString(16).padStart(2, "0"));
 const ALL_SHARDS = Array.from({ length: SHARDS }, (_, i) => SHARD_PREFIX + i.toString(16).padStart(2, "0"));
 
 /** [время последней записи в минутах, {ключ тега: вероятность в тысячных}] */
@@ -51,7 +54,7 @@ export function createCache(o: CacheOptions) {
 
   const ready = (async () => {
     try {
-      await o.kv.remove(LEGACY_KEY); // миграция: старый кэш не переносится
+      await o.kv.remove([LEGACY_KEY, ...OLD_SHARDS]); // миграция: старые кэши не переносятся (dc2 получен иным вопросом)
       const got = await o.kv.get(ALL_SHARDS);
       for (const k of ALL_SHARDS) {
         const raw = got[k];

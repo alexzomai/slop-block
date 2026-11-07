@@ -227,6 +227,7 @@ body:has(.popup) { padding: var(--sp-3); width: 360px; max-width: 100%; }
 .add-row { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); }
 .add-row button { min-width: 96px; }
 .counter { font-size: var(--fs-xs); color: var(--text-2); font-variant-numeric: tabular-nums; }
+.note { margin: 0 0 var(--sp-2); font-size: var(--fs-xs); color: var(--text-2); }
 .counter.at-limit { color: var(--danger); font-weight: 700; }
 .msg { margin: 0 0 var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); background: var(--danger-soft); color: var(--danger); font-size: var(--fs-sm); font-weight: 600; }
 .mode-title { margin: var(--sp-3) 0 var(--sp-2); font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-2); }

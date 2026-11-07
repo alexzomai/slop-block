@@ -105,3 +105,12 @@ describe("cache (пары видео-тег)", () => {
     expect(kv.data.openrouterKey).toBe("k");
   });
 });
+
+describe("версия кэша", () => {
+  it("записи dc2 не используются и удаляются при первом обращении", async () => {
+    const kv = fakeKV({ "dc2:00": { v1: [1, { abc: 900 }] }, "dc2:ff": {} });
+    const c = createCache({ kv, now: () => 1_000_000 });
+    expect(await c.get("v1", [mk("a")])).toEqual([undefined]);
+    expect(Object.keys(kv.data).filter((k) => k.startsWith("dc2:"))).toEqual([]);
+  });
+});

@@ -1,6 +1,6 @@
 {
   "ext_name": { "message": "slop-block" },
-  "ext_description": { "message": "Фильтрует видео YouTube по умным тегам." },
+  "ext_description": { "message": "Показывает в ленте YouTube только видео под ваши умные теги. Решает ИИ (Jev через OpenRouter, ваш ключ)." },
 
   "popup_enabled": { "message": "Фильтр включён" },
   "popup_mode_label": { "message": "Режим" },
@@ -14,6 +14,7 @@
   "popup_title_blocklist": { "message": "Скрывать видео, подходящие под теги" },
   "popup_placeholder_allowlist": { "message": "Что показывать: продуктивность, IT, нейросети" },
   "popup_placeholder_blocklist": { "message": "Что скрывать: кликбейт про похудение" },
+  "popup_union_hint": { "message": "Перечислите темы через запятую — подойдёт видео любой из них." },
   "popup_input_label_allowlist": { "message": "Тег, который нужно показывать" },
   "popup_input_label_blocklist": { "message": "Тег, который нужно скрывать" },
   "popup_new_tag": { "message": "Новый тег" },

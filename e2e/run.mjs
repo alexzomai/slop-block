@@ -658,8 +658,8 @@ try {
   const afterReload = await cacheCalls();
   const hiddenAfter = await ytp.evaluate(() => getComputedStyle(document.getElementById("h1")).display === "none");
   check("decision-cache: после перезагрузки 0 новых вызовов к OpenRouter, скрытие из кэша", afterReload === first && hiddenAfter, `before=${first} after=${afterReload}`);
-  const pairsStored = await sw.evaluate(async () => Object.keys(await chrome.storage.local.get(null)).filter((k) => k.startsWith("dc2:")).length);
-  check("decision-cache: кэш лежит в шардах dc2:*", pairsStored > 0, `shards=${pairsStored}`);
+  const pairsStored = await sw.evaluate(async () => Object.keys(await chrome.storage.local.get(null)).filter((k) => k.startsWith("dc3:")).length);
+  check("decision-cache: кэш лежит в шардах dc3:*", pairsStored > 0, `shards=${pairsStored}`);
   await ytp.close();
   }
   // --- usage-display: блок «Траты» в настоящем popup, background с моком fetch ---

@@ -1,6 +1,6 @@
 {
   "ext_name": { "message": "slop-block" },
-  "ext_description": { "message": "Filters YouTube videos by smart tags." },
+  "ext_description": { "message": "Shows only the YouTube videos that match your smart tags. An AI model (Jev via OpenRouter, your own key) decides." },
 
   "popup_enabled": { "message": "Filter enabled" },
   "popup_mode_label": { "message": "Mode" },
@@ -14,6 +14,7 @@
   "popup_title_blocklist": { "message": "Videos matching the tags are hidden" },
   "popup_placeholder_allowlist": { "message": "What to show: productivity, IT, neural networks" },
   "popup_placeholder_blocklist": { "message": "What to hide: weight-loss clickbait" },
+  "popup_union_hint": { "message": "Separate topics with commas — a video matching any one of them counts." },
   "popup_input_label_allowlist": { "message": "Tag to show" },
   "popup_input_label_blocklist": { "message": "Tag to hide" },
   "popup_new_tag": { "message": "New tag" },

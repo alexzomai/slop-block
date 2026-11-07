@@ -255,3 +255,64 @@ describe("decide: резерв в полёте по каждой паре (r1)",
     expect(fresh.ok).toBe(true);
   });
 });
+
+describe("tag-union: под-темы", () => {
+  const union = (text: string, id = "u"): DecideRequest => ({ ...req, tags: [{ id, text }] });
+  const questions = (f: any, i = 0) => Object.values((JSON.parse(f.mock.calls[i][1].body) as any).questions).map((q: any) => q.instructions as string);
+
+  it("видео подходит под одну из трёх тем → совпал, p = максимум, один запрос с тремя вопросами", async () => {
+    const f = vi.fn(async () => resp(200, okBody({ t0: 0.1, t1: 0.9, t2: 0.2 })));
+    const { decide } = setup(f);
+    expect(await decide(union("продуктивность, IT, нейросети"))).toEqual({ ok: true, hide: true, matchedTagIds: ["u"], probabilities: { u: 0.9 } });
+    expect(f).toHaveBeenCalledTimes(1);
+    expect(questions(f)).toEqual([
+      "Подходит ли это видео под описание: «продуктивность»?",
+      "Подходит ли это видео под описание: «IT»?",
+      "Подходит ли это видео под описание: «нейросети»?",
+    ]);
+  });
+  it("ни одна под-тема не дотянула → не совпал", async () => {
+    const { decide } = setup(vi.fn(async () => resp(200, okBody({ t0: 0.1, t1: 0.69 }))));
+    expect(await decide(union("a, b"))).toMatchObject({ hide: false, matchedTagIds: [], probabilities: { u: 0.69 } });
+  });
+  it("тег без перечисления — один прежний вопрос", async () => {
+    const f = vi.fn(async () => resp(200, okBody({ t0: 0.5 })));
+    const { decide } = setup(f);
+    await decide(union("кликбейт про похудение"));
+    expect(questions(f)).toEqual(["Подходит ли это видео под описание: «кликбейт про похудение»?"]);
+  });
+  it("общая под-тема в двух тегах оплачивается один раз; повтор — из кэша", async () => {
+    const f = vi.fn(async () => resp(200, okBody({ t0: 0.9, t1: 0.1, t2: 0.2 })));
+    const { decide } = setup(f);
+    const r: DecideRequest = { ...req, tags: [{ id: "a", text: "IT, нейросети" }, { id: "b", text: "нейросети, игры" }] };
+    expect(await decide(r)).toMatchObject({ matchedTagIds: ["a"], probabilities: { a: 0.9, b: 0.2 } });
+    expect(questions(f)).toHaveLength(3);
+    await decide(r);
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+  it("дописана под-тема в проверенный тег → один вызов с одним вопросом", async () => {
+    const f = vi.fn()
+      .mockResolvedValueOnce(resp(200, okBody({ t0: 0.1, t1: 0.2 })))
+      .mockResolvedValueOnce(resp(200, okBody({ t0: 0.8 })));
+    const { decide } = setup(f);
+    await decide(union("IT, нейросети"));
+    expect(await decide(union("IT, нейросети, игры"))).toMatchObject({ hide: true, probabilities: { u: 0.8 } });
+    expect(f).toHaveBeenCalledTimes(2);
+    expect(questions(f, 1)).toEqual(["Подходит ли это видео под описание: «игры»?"]);
+  });
+  it("предел 20 вопросов: один платный вызов, у каждого тега есть вероятность", async () => {
+    const many = Array.from({ length: 30 }, (_, i) => `s${i}`).join(", ");
+    const f = vi.fn(async () => resp(200, okBody(Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`t${i}`, 0.1])))));
+    const { decide } = setup(f);
+    const r: DecideRequest = { ...req, tags: [{ id: "big", text: many }, { id: "x", text: "other" }] };
+    const out = await decide(r);
+    expect(f).toHaveBeenCalledTimes(1);
+    expect(questions(f)).toHaveLength(20);
+    expect(out).toMatchObject({ ok: true, probabilities: { big: 0.1, x: 0.1 } });
+  });
+  it("неполный ответ → bad_response (fail-open), ничего не кэшируется", async () => {
+    const f = vi.fn(async () => resp(200, okBody({ t0: 0.9 })));
+    const { decide } = setup(f);
+    expect(await decide(union("a, b"))).toEqual({ ok: false, error: "bad_response" });
+  });
+});

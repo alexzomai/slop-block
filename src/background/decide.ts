@@ -2,7 +2,8 @@ import type { DecideResponse, SmartTag, VideoMeta } from "../shared/decision";
 import { tagIdentity as normText } from "../shared/settings";
 import { createCache } from "./cache";
 import { callJev } from "./client";
-import { buildRequest, parseResponse } from "./jev";
+import { MAX_TAGS, buildRequest, parseResponse } from "./jev";
+import { selectQuestions, subtopics } from "./subtopics";
 import { createLimiter } from "./limiter";
 import { createStats } from "./stats";
 import { getKey, getSettings } from "./settings";
@@ -76,17 +77,21 @@ export function createDecider(o: DeciderOptions) {
     const key = await getKey(o.kv);
     if (!key) return { ok: false, error: "no_key" };
     const { model, threshold } = await getSettings(o.kv);
-    const used = req.tags.slice(0, 20);
+    const used = req.tags.slice(0, MAX_TAGS);
+    // под-темы: единица вопроса, кэша и резерва в полёте; вероятность тега — максимум по его под-темам
+    const subsOf = used.map((t) => subtopics(t.text));
+    const asked: SmartTag[] = selectQuestions(subsOf, MAX_TAGS).map((text, i) => ({ id: `s${i}`, text }));
+    const askedSet = new Set(asked.map((a) => normText(a.text)));
 
     // кэш по паре (videoId, текст тега): к Jev уходят только пары, которых нет ни в кэше, ни в чужом полёте.
     // Между проверкой кэша и резервом нет await — иначе чужой полёт успеет завершиться незамеченным.
     await cache.ready;
-    const cached = cache.peek(req.video.videoId, used);
+    const cached = cache.peek(req.video.videoId, asked);
     const known = new Map<string, number>();
-    used.forEach((t, i) => cached[i] !== undefined && known.set(normText(t.text), cached[i]!));
+    asked.forEach((t, i) => cached[i] !== undefined && known.set(normText(t.text), cached[i]!));
     const waits: [string, Promise<Pair>][] = [];
     const mine: SmartTag[] = [];
-    for (const t of used) {
+    for (const t of asked) {
       const n = normText(t.text);
       if (known.has(n) || waits.some(([w]) => w === n) || mine.some((m) => normText(m.text) === n)) continue;
       const busy = inflight.get(pairKey(req.video.videoId, n));
@@ -112,7 +117,10 @@ export function createDecider(o: DeciderOptions) {
       known.set(waits[i]![0], r.p);
     }
     const probs: Record<string, number> = {};
-    for (const t of used) probs[t.id] = known.get(normText(t.text))!;
+    used.forEach((t, i) => {
+      const ps = subsOf[i]!.map(normText).filter((n) => askedSet.has(n)).map((n) => known.get(n)!);
+      probs[t.id] = ps.length > 0 ? Math.max(...ps) : 0;
+    });
     const matchedTagIds = used.filter((t) => (probs[t.id] ?? 0) >= threshold).map((t) => t.id);
     return { ok: true, hide: matchedTagIds.length > 0, matchedTagIds, probabilities: probs };
   };

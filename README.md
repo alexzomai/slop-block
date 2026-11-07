@@ -87,4 +87,4 @@ See [AGENTS.md](AGENTS.md) for architecture and invariants.
 
 ## License
 
-TBD.
+MIT — see [LICENSE](LICENSE). The bundled JetBrains Mono font stays under the SIL OFL (see `static/fonts/OFL.txt`).
