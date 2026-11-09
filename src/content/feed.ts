@@ -44,7 +44,11 @@ export function measureFilled(doc: Pick<Document, "querySelectorAll">, innerHeig
 interface StyledLike {
   style: { getPropertyValue(n: string): string; getPropertyPriority(n: string): string; setProperty(n: string, v: string, p?: string): void; removeProperty(n: string): string };
   getBoundingClientRect(): { top: number; bottom: number };
+  setAttribute?(n: string, v: string): void;
+  removeAttribute?(n: string): void;
 }
+/** Маркер собственного inline transform reenter: проверка plain у удержания его не считает страничным. */
+export const PEEK_ATTR = "data-slop-peek";
 export interface Geometry { height: number; top: number; left: number }
 export type ReenterResult = "ok" | "unsafe";
 export interface ReenterEnv {
@@ -87,6 +91,7 @@ export function reenter(el: StyledLike, env: ReenterEnv = defaultEnv(), onUnsafe
   let done = false;
   let released = false;
   const putBack = (): void => {
+    el.removeAttribute?.(PEEK_ATTR);
     el.style.removeProperty("transform");
     if (prevValue) el.style.setProperty("transform", prevValue, prevPriority);
   };
@@ -112,7 +117,10 @@ export function reenter(el: StyledLike, env: ReenterEnv = defaultEnv(), onUnsafe
     env.dispatch("scroll");
     env.dispatch("resize");
   };
-  const shift = (px: number): void => el.style.setProperty("transform", `translateY(${-px}px)`, "important");
+  const shift = (px: number): void => {
+    el.setAttribute?.(PEEK_ATTR, "1");
+    el.style.setProperty("transform", `translateY(${-px}px)`, "important");
+  };
   if (r.bottom <= 0) {
     env.timeout(finish, SAFETY_MS);
     finish(); // выше окна: не двигаем
@@ -195,4 +203,61 @@ export class IndicatorView {
     this.el.textContent = indicatorText(state);
     this.el.hidden = false;
   }
+}
+
+export const HOLD_ATTR = "data-slop-hold";
+
+/**
+ * Переключатель удержания continuation (атрибут на <html>, смещение делает CSS). ИНВАРИАНТ: удержание не меняет
+ * геометрию документа и позицию прокрутки. Каждое переключение измеряется в одной задаче (до/после); при каждом
+ * включении дополнительно проверяется `plain` (у ВСЕХ continuation нет своего transform/позиционирования). Если
+ * включение изменило высоту документа, удержание откатывается, позиция прокрутки возвращается к снимку (браузер мог
+ * ограничить scrollTop при временном сжатии документа) и удержание отключается до перезагрузки страницы. Снятие,
+ * изменившее позицию, тоже откатывается к снимку.
+ */
+export function createHold(
+  root: { setAttribute(n: string, v: string): void; removeAttribute(n: string): void },
+  geometry: () => Geometry,
+  hasContinuation: () => boolean,
+  plain: () => boolean = () => true,
+  /** Откат собственного побочного эффекта: вернуть позицию прокрутки к снимку (не прокрутка пользователя). */
+  restore: (g: Geometry) => void = () => {},
+): (on: boolean) => void {
+  let broken = false;
+  let applied = false;
+  const put = (on: boolean): void => {
+    applied = on;
+    if (on) root.setAttribute(HOLD_ATTR, "1");
+    else root.removeAttribute(HOLD_ATTR);
+  };
+  const fixScroll = (snap: Geometry): void => {
+    const now = geometry();
+    if (now.top !== snap.top || now.left !== snap.left) {
+      restore(snap);
+      geometry(); // перечитываем после отката в той же задаче
+    }
+  };
+  return (on) => {
+    if (broken || !on) {
+      // снятие безусловно (стартовый атрибут мог быть взведён снаружи); позиция сохраняется
+      const snap = geometry();
+      put(false);
+      fixScroll(snap);
+      return;
+    }
+    if (applied) return;
+    if (!hasContinuation() || !plain()) return; // перекрыли бы страничный transform или проверять не на чем
+    put(false);
+    const before = geometry();
+    put(true);
+    const after = geometry();
+    if (before.height !== after.height || before.left !== after.left) {
+      broken = true;
+      put(false);
+      geometry(); // раскладка вернулась; теперь возвращаем позицию, которую браузер мог ограничить
+      fixScroll(before);
+      return;
+    }
+    fixScroll(before);
+  };
 }

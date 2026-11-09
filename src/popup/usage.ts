@@ -4,9 +4,10 @@ import type { LocalStats, UsageResponse } from "../shared/usage";
 /** Цена Jev, долларов за 1 млн входных токенов (openrouter.ai, typesafe/jev-1.13). Оценка, не счёт. */
 export const JEV_USD_PER_MTOK = 0.042;
 
-const MESSAGES: Record<"loading" | "no_key" | "network" | "rate_limited" | "bad_response", MsgKey> = {
+const MESSAGES: Record<"loading" | "no_key" | "key_rejected" | "network" | "rate_limited" | "bad_response", MsgKey> = {
   loading: "usage_loading",
   no_key: "usage_no_key",
+  key_rejected: "usage_key_rejected",
   network: "usage_network",
   rate_limited: "usage_rate_limited",
   bad_response: "usage_bad_response",
@@ -17,7 +18,7 @@ export function estimateUsd(tokens: number): number {
 }
 
 export interface UsageView {
-  state: "loading" | "no_key" | "error" | "ok";
+  state: "loading" | "no_key" | "key_rejected" | "error" | "ok";
   text?: string;
   rows?: Array<[string, string]>;
 }
@@ -41,9 +42,14 @@ export function usageView(r: UsageResponse | null | undefined): UsageView {
     return { state: "error", text: r && typeof r === "object" && "ok" in r ? msg("bad_response") : msg("network") };
   }
   if (!r.ok) {
-    if (r.error === "no_key") return { state: "no_key", text: msg("no_key"), rows: localRows(r.local) };
+    if (r.error === "no_key") return { state: "no_key", text: r.provider === "typesafe" ? t("usage_no_key_typesafe") : msg("no_key"), rows: localRows(r.local) };
+    if (r.error === "key_rejected") return { state: "key_rejected", text: r.provider === "typesafe" ? t("usage_key_rejected_typesafe") : msg("key_rejected"), rows: localRows(r.local) };
     const text = r.error === "network" || r.error === "rate_limited" || r.error === "bad_response" ? msg(r.error) : msg("bad_response");
     return { state: "error", text, rows: localRows(r.local) };
+  }
+  if (r.provider === "typesafe") {
+    // нет API баланса: только локальные цифры и подписанная оценка, без «серверных» сумм
+    return { state: "ok", text: t("usage_typesafe_note"), rows: [...localRows(r.local), [t("usage_estimate"), formatUsd(estimateUsd(r.local.tokensTotal))]] };
   }
   const x = r.remote;
   if (!x || ![x.usage, x.usageDaily, x.usageMonthly].every(isNum)) return { state: "error", text: msg("bad_response") };

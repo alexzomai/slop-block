@@ -59,13 +59,13 @@ describe("usage service", () => {
     expect(await svc.get()).toMatchObject({ ok: false, error: "no_key" });
     expect(f).not.toHaveBeenCalled();
   });
-  it("401 с текстом ошибки → no_key, текста сервера нет", async () => {
+  it("401 с текстом ошибки → key_rejected, текста сервера нет", async () => {
     const { svc } = setup(vi.fn(async () => resp(401, { error: { message: `bad key ${SECRET} EVILTEXT` } })));
     const r = await svc.get();
-    expect(r).toMatchObject({ ok: false, error: "no_key" });
+    expect(r).toMatchObject({ ok: false, error: "key_rejected" });
     expect(JSON.stringify(r)).not.toMatch(/EVILTEXT|SECRET/);
   });
-  it.each([[429, "rate_limited"], [503, "network"], [403, "bad_response"], [400, "bad_response"]])("HTTP %i → %s", async (s, e) => {
+  it.each([[429, "rate_limited"], [503, "network"], [402, "bad_response"], [400, "bad_response"]])("HTTP %i → %s", async (s, e) => {
     const { svc } = setup(vi.fn(async () => resp(s, { error: { message: "EVILTEXT" } })));
     const r = await svc.get();
     expect(r).toMatchObject({ ok: false, error: e });

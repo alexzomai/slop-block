@@ -1,3 +1,4 @@
+import type { ProviderId } from "../background/providers";
 import { applyI18n, domRoot, t } from "../shared/i18n";
 import { loadView, onRemoveKey, onSaveKey, onSaveSettings } from "./controller";
 import type { Result } from "./controller";
@@ -16,24 +17,34 @@ function say(id: string, r: Result): void {
 async function render(): Promise<void> {
   const v = await loadView(kv);
   $("key-status").textContent = v.keySet ? t("options_key_saved_masked", v.keyMask) : t("options_key_not_set");
+  $("ts-key-status").textContent = v.typesafe.keySet ? t("options_key_saved_masked", v.typesafe.keyMask) : t("options_key_not_set");
+  $<HTMLSelectElement>("provider").value = v.provider;
   $<HTMLInputElement>("model").value = v.model;
+  $<HTMLInputElement>("model-typesafe").value = v.modelTypesafe;
   $<HTMLInputElement>("threshold").value = String(v.threshold);
 }
 
-$("save-key").addEventListener("click", async () => {
-  const input = $<HTMLInputElement>("key");
-  const r = await onSaveKey(kv, input.value);
-  if (r.ok) input.value = "";
-  say("key-msg", r);
-  await render();
-});
-$("remove-key").addEventListener("click", async () => {
-  $<HTMLInputElement>("key").value = "";
-  say("key-msg", await onRemoveKey(kv));
-  await render();
-});
+// Секция ключа провайдера: ids без префикса — OpenRouter, с префиксом ts- — TypeSafe.
+function wireKey(provider: ProviderId, prefix: string): void {
+  $(`${prefix}save-key`).addEventListener("click", async () => {
+    const input = $<HTMLInputElement>(`${prefix}key`);
+    const r = await onSaveKey(kv, input.value, provider);
+    if (r.ok) input.value = "";
+    say(`${prefix}key-msg`, r);
+    await render();
+  });
+  $(`${prefix}remove-key`).addEventListener("click", async () => {
+    $<HTMLInputElement>(`${prefix}key`).value = "";
+    say(`${prefix}key-msg`, await onRemoveKey(kv, provider));
+    await render();
+  });
+}
+wireKey("openrouter", "");
+wireKey("typesafe", "ts-");
+
 $("save-settings").addEventListener("click", async () => {
-  say("settings-msg", await onSaveSettings(kv, $<HTMLInputElement>("model").value, $<HTMLInputElement>("threshold").value));
+  const provider = $<HTMLSelectElement>("provider").value === "typesafe" ? "typesafe" : "openrouter";
+  say("settings-msg", await onSaveSettings(kv, $<HTMLInputElement>("model").value, $<HTMLInputElement>("threshold").value, provider, $<HTMLInputElement>("model-typesafe").value));
   await render();
 });
 

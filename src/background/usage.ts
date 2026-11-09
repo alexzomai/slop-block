@@ -1,8 +1,9 @@
 import type { RemoteUsage, UsageResponse } from "../shared/usage";
 import { callJev } from "./client";
 import type { createLimiter } from "./limiter";
-import { getKey } from "./settings";
-import { createStats } from "./stats";
+import { createRejections } from "./rejected";
+import { getKey, getKeyWithGen, getSettings } from "./settings";
+import { createStats, emptyStats, statsStorage } from "./stats";
 import type { KV } from "./storage";
 
 /** GET /api/v1/key — данные текущего ключа. См. design.md, D1. */
@@ -31,12 +32,16 @@ export interface UsageServiceOptions {
   sleep: (ms: number) => Promise<void>;
   random: () => number;
   limiter: ReturnType<typeof createLimiter>;
+  /** Общая с decide память об отклонённых ключах; иначе создаётся своя. */
+  rejections?: ReturnType<typeof createRejections>;
 }
 
-type Remote = { ok: true; remote: RemoteUsage } | { ok: false; error: "no_key" | "rate_limited" | "network" | "bad_response" };
+type Remote = { ok: true; remote: RemoteUsage } | { ok: false; error: "no_key" | "key_rejected" | "rate_limited" | "network" | "bad_response" };
 
 export function createUsageService(o: UsageServiceOptions) {
   const stats = createStats({ kv: o.kv, now: o.now });
+  const statsTs = createStats({ kv: o.kv, now: o.now, storage: statsStorage("typesafe") });
+  const rejections = o.rejections ?? createRejections(o.kv);
   // Контракт: ответ, полученный с ключом K, не показывается, если текущий сохранённый ключ ≠ K.
   // Ключ K хранится только в памяти background (сравнение полным значением, без отпечатков) и наружу не отдаётся.
   // gen растёт при любом изменении ключа (invalidate); кэш и in-flight привязаны к (K, gen).
@@ -44,9 +49,12 @@ export function createUsageService(o: UsageServiceOptions) {
   let cached: { key: string; gen: number; at: number; remote: RemoteUsage } | undefined;
   let inflight: { key: string; gen: number; p: Promise<Remote> } | undefined;
 
-  async function fetchRemote(key: string, g: number): Promise<Remote> {
+  async function fetchRemote(key: string, g: number, keyGen: string): Promise<Remote> {
     const res = await callJev({ fetch: o.fetch, key, url: KEY_ENDPOINT, method: "GET", sleep: o.sleep, random: o.random, schedule: o.limiter.run });
-    if (!res.ok) return { ok: false, error: res.error };
+    if (!res.ok) {
+      if (res.error === "key_rejected") await rejections.mark("openrouter", key, keyGen).catch(() => undefined);
+      return { ok: false, error: res.error };
+    }
     const remote = parseKeyInfo(res.json);
     if (!remote) return { ok: false, error: "bad_response" };
     // Результат кэшируется только если ни ключ, ни поколение не менялись за время запроса.
@@ -55,11 +63,11 @@ export function createUsageService(o: UsageServiceOptions) {
   }
 
   /** Remote для ключа key: из кэша или запросом (async). Сам по себе ничего не гарантирует о «текущем» ключе. */
-  async function obtain(key: string, g: number): Promise<Remote> {
+  async function obtain(key: string, g: number, keyGen: string): Promise<Remote> {
     const age = cached ? o.now() - cached.at : Infinity;
     if (cached && cached.key === key && cached.gen === g && age >= 0 && age < CACHE_MS) return { ok: true, remote: cached.remote };
     if (!inflight || inflight.key !== key || inflight.gen !== g) {
-      const p: Promise<Remote> = fetchRemote(key, g).finally(() => {
+      const p: Promise<Remote> = fetchRemote(key, g, keyGen).finally(() => {
         if (inflight?.p === p) inflight = undefined;
       });
       inflight = { key, gen: g, p };
@@ -75,32 +83,47 @@ export function createUsageService(o: UsageServiceOptions) {
       inflight = undefined;
     },
     /**
-     * ИНВАРИАНТ: единственная точка возврата данных (remote) — последняя строка цикла. Перед ней всё асинхронное
-     * (чтение ключа, fetch, stats.read, повторное чтение ключа) уже выполнено, а сама проверка «текущий ключ === K
-     * и gen не менялся» — синхронная и последняя операция: между ней и return нет ни одного await.
-     * Проверка не прошла → проход повторяется (до MAX_PASSES); при исчерпании — ошибка network, не устаревшие данные.
+     * ИНВАРИАНТ: у get() ОДНА точка возврата данных — последняя строка прохода — и она общая для ВСЕХ веток
+     * (успех и ошибка OpenRouter, no_key, успех TypeSafe). Ветки лишь собирают кандидата (candidate) вместе со снимком
+     * контекста (provider, key, gen). После всего асинхронного (чтение настроек и ключа, fetch, stats.read, повторное
+     * чтение провайдера и ключа) проверка «провайдер, ключ и gen не менялись» — синхронная и последняя операция:
+     * между ней и return нет ни одного await. Не прошла → проход повторяется (до MAX_PASSES); при исчерпании —
+     * ошибка network с пустым счётчиком: ни ответ, ни числа прежнего контекста не отдаются.
      */
     async get(): Promise<UsageResponse> {
       for (let pass = 0; pass < MAX_PASSES; pass++) {
         try {
           const g = gen;
-          const key = await getKey(o.kv);
-          if (!key) {
+          const provider = (await getSettings(o.kv)).provider;
+          const { key, gen: keyGen } = await getKeyWithGen(o.kv, provider);
+          let candidate: UsageResponse;
+          if (provider === "typesafe") {
+            // У TypeSafe нет API баланса (design.md, D5): сети нет, только наличие ключа и локальный счётчик.
+            const local = await statsTs.read();
+            candidate = !key
+              ? { ok: false, error: "no_key", provider: "typesafe", local }
+              : (await rejections.has("typesafe", key, keyGen))
+                ? { ok: false, error: "key_rejected", provider: "typesafe", local }
+                : { ok: true, remote: null, provider: "typesafe", local };
+          } else if (!key) {
             cached = undefined;
-            return { ok: false, error: "no_key", local: await stats.read() }; // данных ключа нет — утечь нечему
+            candidate = { ok: false, error: "no_key", local: await stats.read() }; // данных ключа нет — утечь нечему
+          } else if (await rejections.has("openrouter", key, keyGen)) {
+            candidate = { ok: false, error: "key_rejected", local: await stats.read() }; // без запроса: ключ уже отвергнут
+          } else {
+            const remote = await obtain(key, g, keyGen);
+            const local = await stats.read();
+            candidate = remote.ok ? { ok: true, remote: remote.remote, local } : { ok: false, error: remote.error, local };
           }
-          const remote = await obtain(key, g);
-          const local = await stats.read();
-          const current = await getKey(o.kv);
+          const providerNow = (await getSettings(o.kv)).provider;
+          const current = await getKey(o.kv, provider); // последнее чтение перед проверкой
           // --- после этой строки await запрещён ---
-          if (current === key && g === gen) {
-            return remote.ok ? { ok: true, remote: remote.remote, local } : { ok: false, error: remote.error, local };
-          }
+          if (providerNow === provider && current === key && g === gen) return candidate;
         } catch {
           // сбой чтения хранилища: повторить проход / исчерпать
         }
       }
-      return { ok: false, error: "network", local: await stats.read() };
+      return { ok: false, error: "network", local: emptyStats() };
     },
   };
 }

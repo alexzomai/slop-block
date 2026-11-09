@@ -1,3 +1,5 @@
+<p align="center"><img src="static/icons/icon.svg" alt="slop-block icon" width="120" height="120"></p>
+
 # slop-block
 
 **Take back your YouTube feed: describe what you want to watch, and an AI decision model hides the rest.**
@@ -6,9 +8,9 @@
 
 - Filter the YouTube feed with plain-language tags such as "productivity tips" or "programming tutorials".
 - Two modes: **Show only matching** (everything else is hidden) or **Hide matching** (hide what you don't want).
-- Decisions by [TypeSafe Jev](https://openrouter.ai/typesafe/jev-1.13) through OpenRouter, using **your own API key**.
+- Decisions by [TypeSafe Jev](https://openrouter.ai/typesafe/jev-1.13), using **your own API key** from either provider: [OpenRouter](https://openrouter.ai) (default) or [TypeSafe](https://docs.typesafe.ai) directly.
 - Cheap: a decision for a (video, tag) pair is reused while it stays in the cache (up to 30 days, capacity 20,000 pairs, oldest evicted first); simultaneous requests for the same pair are paid for once.
-- Built-in spending block in the popup (today, total, remaining limit).
+- Built-in spending block in the popup (OpenRouter: today, total, remaining limit; TypeSafe has no balance API, so it shows local request/token counts and a labelled cost estimate).
 - Option to leave your subscriptions page untouched.
 - English and Russian interface.
 - No backend, no account, no analytics.
@@ -51,9 +53,9 @@ Requires Chrome 120 or newer.
 
 ## Setup
 
-1. Create an API key at [openrouter.ai/keys](https://openrouter.ai/keys) (add a small credit balance; a spending limit on the key is a good idea).
-2. Open the extension's options page (popup → *Settings*) and paste the key. It is stored locally and the page only shows that a key is saved.
-3. Model: `typesafe/jev-1.13` (default). Threshold: `0.7` (default, 0–1; lower matches more).
+1. Create an API key at [openrouter.ai/keys](https://openrouter.ai/keys) (add a small credit balance; a spending limit on the key is a good idea) **or** at [console.typesafe.ai/keys](https://console.typesafe.ai/keys) for the native TypeSafe API.
+2. Open the extension's options page (popup → *Settings*), paste the key into the section of its provider and choose the **Decision provider** (OpenRouter by default). Each provider has its own key, stored locally; the page only shows that a key is saved.
+3. Models: `typesafe/jev-1.13` for OpenRouter and `jev-1.13.0` for TypeSafe (defaults; the same Jev version, so decisions are shared in the cache). Threshold: `0.7` (default, 0–1; lower matches more).
 
 ## Usage
 
@@ -65,8 +67,8 @@ Requires Chrome 120 or newer.
 
 ## Privacy
 
-- Sent to OpenRouter: only the video **title**, **channel** and a short **description snippet**, plus your tag texts. Nothing else from the page, no browsing history, no account data.
-- Your API key stays on your machine in `chrome.storage.local`, which is available only to the extension's trusted contexts (not to content scripts or YouTube pages). The background uses it for requests, the options page saves it, and the popup only checks whether a key exists. It is never sent anywhere except OpenRouter as the authorization header.
+- Sent to the provider you selected (OpenRouter or TypeSafe): only the video **title**, **channel** and a short **description snippet**, plus your tag texts. Nothing else from the page, no browsing history, no account data.
+- Your API key stays on your machine in `chrome.storage.local`, which is available only to the extension's trusted contexts (not to content scripts or YouTube pages). The background uses it for requests, the options page saves it, and the popup only checks whether a key exists. Each key is sent only to its own provider, as the authorization header.
 - There is no slop-block server. Tags and settings sync via your browser's own extension storage.
 - Page text is handled as plain text only.
 

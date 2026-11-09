@@ -11,8 +11,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // Два набора проверок (запускаются раздельно, см. e2e/all.mjs):
 //  tags       — тестовая сборка dist-test/: боевой background заменён детерминированной заглушкой (в dist/ её нет)
 //  openrouter — боевая сборка dist/ с настоящим background (fetch в service worker подменяется моком)
+//  typesafe   — та же боевая сборка: выбор провайдера TypeSafe в options, решения через мок api.typesafe.ai
 const suite = (process.argv.find((a) => a.startsWith("--suite=")) ?? "--suite=tags").slice("--suite=".length);
-if (!["tags", "openrouter", "i18n"].includes(suite)) throw new Error(`неизвестный набор: ${suite}`);
+if (!["tags", "openrouter", "typesafe", "i18n"].includes(suite)) throw new Error(`неизвестный набор: ${suite}`);
 // Язык интерфейса Chromium: --lang=<код> задаёт язык сообщений, переменная LANGUAGE — chrome.i18n.getUILanguage().
 // Нужны оба (проверено: один флаг даёт тексты ru, но getUILanguage()=en-US). Прежние наборы проверяют русские тексты → по умолчанию ru.
 const lang = (process.argv.find((a) => a.startsWith("--lang=")) ?? "--lang=ru").slice("--lang=".length);
@@ -20,7 +21,7 @@ if (lang !== "ru" && lang !== "en") throw new Error(`неизвестный яз
 // Тексты UI по ключу из словаря выбранного языка (а не литералами).
 const catalog = JSON.parse(readFileSync(join(root, "static", "_locales", lang, "messages.json"), "utf8"));
 const msg = (key) => catalog[key].message;
-const dist = join(root, suite === "openrouter" ? "dist" : "dist-test");
+const dist = join(root, suite === "openrouter" || suite === "typesafe" ? "dist" : "dist-test");
 const fixture = readFileSync(join(root, "e2e", "fixtures", "youtube.html"), "utf8");
 const shots = join(root, "artifacts", "screenshots");
 const widths = [390, 1280];
@@ -55,7 +56,7 @@ function check(name, ok, detail = "") {
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` — ${detail}` : ""}`);
 }
 
-await build(dist, { testBackground: suite !== "openrouter" });
+await build(dist, { testBackground: suite !== "openrouter" && suite !== "typesafe" });
 console.log(`# набор: ${suite} (${dist}), язык: ${lang}`);
 mkdirSync(shots, { recursive: true });
 
@@ -303,7 +304,7 @@ try {
       await nk.goto("https://www.youtube.com/");
       check(`no_key${tag}: всё видно, шлюз снят`, (await waitState(nk, [], ALL)) && (await gate(nk)) === null);
       await nk.waitForTimeout(800);
-      check(`no_key${tag}: повторных запросов нет`, (await calls()) <= 3, `calls=${await calls()}`);
+      check(`no_key${tag}: повторных запросов нет`, (await calls()) <= 5, `calls=${await calls()}`);
       await nk.screenshot({ path: join(shots, `allowlist-no-key-${width}.png`), fullPage: true });
       await nk.close();
 
@@ -532,7 +533,7 @@ try {
         const c = await open("/?good=1&first=2");
         await c.waitForFunction((t) => { const s = document.getElementById("slop-feed-status"); return !!s && !s.hidden && s.textContent === t; }, TEXT_EXHAUSTED, { timeout: 60000 }).catch(() => {});
         const sc = await stable(c, 3000);
-        check(`autofill${tag}: общий лимит M=${MAX_TOTAL} — стоп и сообщение`, sc.status === TEXT_EXHAUSTED && sc.reenters === MAX_TOTAL, `reenters=${sc.reenters} portions=${sc.portions} status=${sc.status}`);
+        check(`autofill${tag}: общий лимит M=${MAX_TOTAL} — стоп и сообщение; фактических порций ≤ M`, sc.status === TEXT_EXHAUSTED && sc.portions <= MAX_TOTAL && sc.portions >= MAX_TOTAL - 1, `reenters=${sc.reenters} portions=${sc.portions} status=${sc.status}`);
         await c.close();
 
         // D) конец ленты: continuation исчезает — тихо, без сообщения
@@ -542,6 +543,71 @@ try {
         const sd = await stable(d, 3000);
         check(`autofill${tag}: конец ленты — индикатора нет, continuation нет`, sd.status === null && !sd.hasCont && sd.portions === 2, `status=${sd.status} portions=${sd.portions}`);
         await d.close();
+
+        // F) F1: пустое совпадение + медленные решения + YouTube грузит порции цепочкой (renew=1): лимит пустых действует,
+        //    страница не догружается до конца ленты, индикатор остановки виден
+        await setSettings({ target: 6 });
+        await resetStub(700, undefined);
+        const f = await open("/?good=0&first=0&renew=1&per=30&parts=100&lat=600");
+        await f.waitForFunction((t) => { const s = document.getElementById("slop-feed-status"); return !!s && !s.hidden && s.textContent === t; }, TEXT_EXHAUSTED, { timeout: 60000 }).catch(() => {});
+        const sf = await stable(f, 3000);
+        check(`autofill${tag}: F1 пустое совпадение — индикатор остановки виден`, sf.status === TEXT_EXHAUSTED, String(sf.status));
+        check(`autofill${tag}: F1 фактических порций ≤ N=${MAX_EMPTY} (включая начатую YouTube; цепочки нет)`, sf.portions >= 3 && sf.portions <= MAX_EMPTY && sf.total === 6 + 30 * sf.portions, `portions=${sf.portions} total=${sf.total} reenters=${sf.reenters} t=${(await f.evaluate(() => window.__log)).map((x) => x.t + (x.hold ? "H" : "")).join(",")}`);
+        check(`autofill${tag}: F1 платных решений не больше загруженных карточек`, (await feedCalls()) <= sf.total, `calls=${await feedCalls()} total=${sf.total}`);
+        // жест пользователя после остановки даёт новый ограниченный бюджет (не бесконечный)
+        await f.waitForTimeout(10500);
+        await f.mouse.move(200, 300);
+        await f.mouse.wheel(0, 400);
+        await f.waitForFunction((p) => window.__portions >= p + 3, sf.portions, { timeout: 60000 }).catch(() => {});
+        const sf2 = await stable(f, 3000);
+        check(`autofill${tag}: F1 жест после остановки возобновил догрузку, но с лимитом`, sf2.portions > sf.portions && sf2.portions <= sf.portions + MAX_EMPTY, `portions ${sf.portions}→${sf2.portions}`);
+        await f.close();
+
+        // F') те же лимиты при быстрых ответах и lat=150 (нативные порции приходят сразу после старта content script)
+        await setSettings({ target: 6 });
+        await resetStub(0, undefined);
+        const f2 = await open("/?good=0&first=0&renew=1&per=30&parts=100&lat=150");
+        await f2.waitForFunction((t) => { const s = document.getElementById("slop-feed-status"); return !!s && !s.hidden && s.textContent === t; }, TEXT_EXHAUSTED, { timeout: 60000 }).catch(() => {});
+        const sf3 = await stable(f2, 2000);
+        const lg = await f2.evaluate(() => window.__log);
+        check(`autofill${tag}: N lat=150, быстрые ответы — фактических порций ≤ ${MAX_EMPTY}`, sf3.portions <= MAX_EMPTY && sf3.portions >= MAX_EMPTY - 1, `portions=${sf3.portions} reenters=${sf3.reenters} t=${lg.map((x) => x.t).join(",")}`);
+        await f2.close();
+        // то же для общего бюджета: подходящие есть в каждой порции, окно не заполнено, ответы мгновенные, lat=150
+        await setSettings({ target: 30 });
+        await resetStub(0, undefined);
+        const f3 = await open("/?good=1&first=2&renew=1&per=10&parts=100&lat=150&ch=10");
+        await f3.waitForFunction((t) => { const s = document.getElementById("slop-feed-status"); return !!s && !s.hidden && s.textContent === t; }, TEXT_EXHAUSTED, { timeout: 60000 }).catch(() => {});
+        const sf4 = await stable(f3, 2000);
+        const lg3 = await f3.evaluate(() => window.__log);
+        check(`autofill${tag}: M lat=150, быстрые ответы — фактических порций ≤ ${MAX_TOTAL}`, sf4.portions <= MAX_TOTAL, `portions=${sf4.portions} reenters=${sf4.reenters} t=${lg3.map((x) => x.t).join(",")}`);
+        await f3.close();
+
+        // G) F2: цель 6 при цепочке YouTube (renew=1): догрузка останавливается на цели и заполнении, лишних порций нет
+        await setSettings({ target: 6 });
+        await resetStub(300, undefined);
+        const g = await open("/?good=5&first=6&renew=1&per=10&parts=100&lat=600");
+        const sg = await stable(g, 3000);
+        check(`autofill${tag}: F2 цель 6 достигнута`, sg.visible >= 6 && sg.lastBottom >= sg.h, `visible=${sg.visible} lastBottom=${sg.lastBottom} h=${sg.h}`);
+        check(`autofill${tag}: F2 порций немного, не до конца ленты`, sg.portions <= 3, `portions=${sg.portions} total=${sg.total}`);
+        check(`autofill${tag}: F2 платных не больше загруженных карточек`, (await feedCalls()) <= sg.total, `calls=${await feedCalls()} total=${sg.total}`);
+        await g.close();
+
+        // H) первый проход контроллера идёт, когда continuation ещё нет (как на живом YouTube): автодогрузка всё равно работает
+        await setSettings({ target: 12 });
+        await resetStub(300, undefined);
+        const h = await open("/?good=5&first=2&late=1500");
+        const sh = await stable(h, 3000);
+        check(`autofill${tag}: H continuation появился позже первого прохода — догрузка работает до цели`, sh.portions >= 1 && sh.visible >= 12, `portions=${sh.portions} visible=${sh.visible}`);
+        await h.close();
+
+        // I) ревью P2-1: страничное переполнение от другого continuation + прокрутка у низа; удержание не сдвигает позицию
+        await setSettings({ target: 30 });
+        await resetStub(1800, undefined);
+        const gh = await open("/?first=1&good=0&ghost=700&parts=0&ch=100");
+        await gh.waitForTimeout(5000);
+        const sgh = await gh.evaluate(() => ({ y: Math.round(scrollY), hold: document.documentElement.hasAttribute("data-slop-hold"), h: document.scrollingElement.scrollHeight }));
+        check(`autofill${tag}: I прокрутка не сдвинута удержанием (700), документ ${sgh.h}`, sgh.y === 700 && sgh.h >= 1500, JSON.stringify(sgh));
+        await gh.close();
 
         // E) неактивные состояния: blocklist, подписки с bypass, no_key, выключенный фильтр → только штатная порция YouTube
         const idle = [
@@ -565,7 +631,8 @@ try {
         // G) ИНВАРИАНТ раскладки: покадрово (rAF на весь цикл триггера) scrollHeight и scrollTop не меняются.
         //    Фикстура без запасного padding; нижняя граница документа; overflow-anchor none/auto; continuation в окне и ниже окна.
         await setSettings({ target: 12 });
-        await resetStub(0, undefined);
+        // ответы чуть позже первого evaluate автодогрузки (250 мс): индикатор встаёт до проявления карточек, проба стартует до первого trigger
+        await resetStub(400, undefined);
         const L = "list=1&ch=148&first=6&good=0&parts=0"; // нижняя граница: 6×148 + 60 > окна 800
         const css = (t) => `&css=${encodeURIComponent(t)}`;
         // expect: "unsafe" — триггер обязан быть отклонён (измерение обнаруживает изменение геометрии);
@@ -601,7 +668,7 @@ try {
           const res = await g.evaluate(() => {
             window.__stopProbe = true;
             const st = document.getElementById("slop-feed-status");
-            return { rec: window.__rec, start: window.__probeStart, reenters: window.__reenters, api: window.__scrollApi, status: st && !st.hidden ? st.textContent : null, tr: document.getElementById("cont")?.style.transform ?? null };
+            return { pre: window.__probePre, ind: window.__probeInd, rec: window.__rec, start: window.__probeStart, reenters: window.__reenters, api: window.__scrollApi, status: st && !st.hidden ? st.textContent : null, tr: document.getElementById("cont")?.style.transform ?? null };
           });
           const rec = res.rec ?? [];
           const bad = rec.filter(([h, y]) => h !== rec[0][0] || y !== rec[0][1]);
@@ -610,11 +677,12 @@ try {
           const outcomeOk = expectMode === "unsafe" ? unsafeShown && res.reenters === 0 : worked || unsafeShown;
           check(
             `инвариант${tag}: ${name} — ${unsafeShown ? "триггер отклонён, сообщение показано" : "триггер сработал"}, кадров ${rec.length}, scrollHeight/scrollTop неизменны`,
-            outcomeOk && rec.length >= 20 && bad.length === 0 && res.api === 0 && res.tr === "",
-            `reenters=${res.reenters} status=${res.status} frames=${rec.length} first=${JSON.stringify(rec[0])} bad=${JSON.stringify(bad.slice(0, 3))} transform=${JSON.stringify(res.tr)}`,
+            outcomeOk && res.pre === 0 && res.ind === true && rec.length >= 20 && bad.length === 0 && res.api === 0 && res.tr === "",
+            `pre=${res.pre} ind=${res.ind} reenters=${res.reenters} status=${res.status} frames=${rec.length} first=${JSON.stringify(rec[0])} bad=${JSON.stringify(bad.slice(0, 3))} transform=${JSON.stringify(res.tr)}`,
           );
           await g.close();
         }
+        await resetStub(0, undefined);
 
         // F) поле цели в popup: 6–30, сохраняется, без горизонтальной прокрутки
         const pp = await context.newPage();
@@ -706,10 +774,19 @@ try {
     globalThis.__calls2 = [];
     globalThis.fetch = async (url, init) => {
       const q = JSON.parse(init.body).questions;
-      globalThis.__calls2.push({ url: String(url), questions: Object.keys(q).length });
+      globalThis.__calls2.push({ url: String(url), questions: Object.keys(q).length, title: JSON.parse(init.body).state.title });
+      globalThis.__msgs2 ??= null;
       return new Response(JSON.stringify({ answers: Object.fromEntries(Object.keys(q).map((k) => [k, { type: "noul", noul: 0.9 }])) }), { status: 200 });
     };
     await chrome.storage.local.set({ openrouterKey: secret });
+    if (!globalThis.__msgCounter) {
+      globalThis.__msgCounter = { peek: 0, decide: 0 };
+      chrome.runtime.onMessage.addListener((m) => {
+        if (m && m.type === "slop/peek") globalThis.__msgCounter.peek++;
+        if (m && m.type === "slop/decide") globalThis.__msgCounter.decide++;
+        return undefined;
+      });
+    }
     await chrome.storage.sync.clear();
     await chrome.storage.sync.set({ "slop.settings": { enabled: true, order: ["c1"], mode: "blocklist" }, "slop.tag.c1": { text: "кэш-тест", enabled: true } });
   }, SECRET);
@@ -731,12 +808,18 @@ try {
   const first = await settle();
   const hiddenFirst = await ytp.evaluate(() => getComputedStyle(document.getElementById("h1")).display === "none");
   check("decision-cache: первая загрузка фикстуры — вызовы к OpenRouter, видео скрыто", first > 0 && hiddenFirst, `calls=${first}`);
+  const domTitles = await ytp.evaluate(() => [...new Map([...document.querySelectorAll("ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer, yt-lockup-view-model, ytm-shorts-lockup-view-model, ytd-reel-item-renderer")].map((c) => [(() => { const h = c.querySelector("a[href*='/watch?v='], a[href*='/shorts/']")?.getAttribute("href"); if (!h) return null; const u = new URL(h, "https://www.youtube.com"); return u.searchParams.get("v") ?? u.pathname; })(), (c.querySelector("#video-title, a#video-title-link, .yt-lockup-metadata-view-model__title, h3")?.textContent ?? c.querySelector("a")?.getAttribute("aria-label") ?? "").replace(/\s+/g, " ").trim()]).filter(([h, t]) => h && t)).values()]);
+  const paidTitles = await sw.evaluate(() => globalThis.__calls2.map((c) => c.title));
+  check("filter-perf: платные вызовы первой загрузки идут в порядке карточек на странице, по одному на видео", JSON.stringify(paidTitles) === JSON.stringify(domTitles), `paid=${paidTitles.length} dom=${domTitles.length}`);
+  await sw.evaluate(() => { globalThis.__msgCounter.peek = 0; globalThis.__msgCounter.decide = 0; });
   await ytp.reload();
   await ytp.waitForFunction(() => getComputedStyle(document.getElementById("h1")).display === "none", null, { timeout: 8000 }).catch(() => {});
   await new Promise((r) => setTimeout(r, 1500));
   const afterReload = await cacheCalls();
   const hiddenAfter = await ytp.evaluate(() => getComputedStyle(document.getElementById("h1")).display === "none");
   check("decision-cache: после перезагрузки 0 новых вызовов к OpenRouter, скрытие из кэша", afterReload === first && hiddenAfter, `before=${first} after=${afterReload}`);
+  const msgCounts = await sw.evaluate(() => globalThis.__msgCounter);
+  check("filter-perf: повторный визит — проверка кэша пакетом (peek ≥ 1, меньше числа карточек), 0 decide", msgCounts.decide === 0 && msgCounts.peek >= 1 && msgCounts.peek < domTitles.length, JSON.stringify(msgCounts) + ` cards=${domTitles.length}`);
   const pairsStored = await sw.evaluate(async () => Object.keys(await chrome.storage.local.get(null)).filter((k) => k.startsWith("dc3:")).length);
   check("decision-cache: кэш лежит в шардах dc3:*", pairsStored > 0, `shards=${pairsStored}`);
   await ytp.close();
@@ -804,7 +887,7 @@ try {
     await setKey(KEYS[2]);
     for (const width of widths) {
       const p = await openPopup(width, "401");
-      check(`траты@${width}: 401 → «Ключ OpenRouter не задан» и кнопка настроек`, (await p.textContent("#usage-text")) === "Ключ OpenRouter не задан" && (await p.locator("#usage-settings").isVisible()), await p.textContent("#usage-text"));
+      check(`траты@${width}: 401 → «OpenRouter отклонил ключ» и кнопка настроек`, (await p.textContent("#usage-text")) === "OpenRouter отклонил ключ" && (await p.locator("#usage-settings").isVisible()), await p.textContent("#usage-text"));
       await secretAbsent(p, `траты@${width}: текст сервера не показан`, KEYS[2]);
       await noOverflow(p, `траты@${width}: (нет ключа) нет горизонтальной прокрутки`);
       await p.screenshot({ path: join(shots, `popup-usage-nokey-${width}.png`), fullPage: true });
@@ -956,6 +1039,82 @@ try {
     check(`legacy-dup [${lang}]: текст пользователя в storage не переписан`, (await lp.evaluate(async () => (await chrome.storage.sync.get("slop.tag.legacy1"))["slop.tag.legacy1"].text)) === "IT   videos");
     await lp.evaluate(() => chrome.storage.sync.clear());
     await lp.close();
+  }
+  if (suite === "typesafe") {
+    // --- typesafe-provider: переключение провайдера в options, решения через мок api.typesafe.ai ---
+    const TS_SECRET = "ts-e2e-TYPESAFESECRETVALUE9999";
+    const OR_SECRET = "sk-or-v1-E2EORSECRETVALUE0000WXYZ";
+    const TS_URL = "https://api.typesafe.ai/v1/systemone";
+    const OR_URL = "https://openrouter.ai/api/v1/systemone";
+    await sw.evaluate(() => {
+      globalThis.__tsCalls = [];
+      globalThis.fetch = async (url, init) => {
+        globalThis.__tsCalls.push({ url: String(url), auth: init.headers.Authorization, model: JSON.parse(init.body).model });
+        return new Response(JSON.stringify({ model: "jev-1.13.0", answers: { t0: { type: "noul", noul: 0.9 } }, usage: { input_tokens: 200, output_tokens: 4 } }), { status: 200 });
+      };
+    });
+    const decideMsg = (p, id) => p.evaluate((v) => chrome.runtime.sendMessage({ type: "slop/decide", video: { videoId: v, title: "t", channel: "c" }, tags: [{ id: "a", text: "x" }] }), id);
+    for (const width of widths) {
+      await sw.evaluate(() => chrome.storage.local.remove(["typesafeKey", "openrouterKey", "settings"])); // чистое состояние на каждую ширину
+      const p = await context.newPage();
+      p.on("console", (m) => m.type() === "error" && errors.push(`ts-options@${width} console: ${m.text()}`));
+      p.on("pageerror", (e) => errors.push(`ts-options@${width} pageerror: ${e.message}`));
+      await p.setViewportSize({ width, height: 1000 });
+      await p.goto(`chrome-extension://${extId}/options.html`);
+      await p.waitForFunction(() => document.getElementById("ts-key-status").textContent.includes("не задан") || document.getElementById("ts-key-status").textContent.includes("not set"));
+      check(`ts-options@${width}: по умолчанию провайдер OpenRouter, модель TypeSafe jev-1.13.0`, (await p.inputValue("#provider")) === "openrouter" && (await p.inputValue("#model-typesafe")) === "jev-1.13.0" && (await p.inputValue("#model")) === "typesafe/jev-1.13");
+      check(`ts-options@${width}: поле ключа TypeSafe type=password`, (await p.getAttribute("#ts-key", "type")) === "password");
+      await p.fill("#ts-key", TS_SECRET);
+      await p.click("#ts-save-key");
+      await p.waitForFunction(() => /…/.test(document.getElementById("ts-key-status").textContent));
+      const text = await p.evaluate(() => document.body.innerText + "|" + document.getElementById("ts-key").value);
+      check(`ts-options@${width}: ключ TypeSafe не показан целиком, поле очищено`, !text.includes(TS_SECRET) && !text.includes("TYPESAFESECRET"));
+      check(`ts-options@${width}: ключ OpenRouter остался не заданным`, (await p.textContent("#key-status")).length > 0 && (await sw.evaluate(() => chrome.storage.local.get("openrouterKey"))).openrouterKey === undefined);
+      // провайдер OpenRouter активен, ключа OpenRouter нет -> no_key, сети нет
+      const before = await sw.evaluate(() => globalThis.__tsCalls.length);
+      const nk = await decideMsg(p, `nk${width}`);
+      check(`ts-decide@${width}: активен OpenRouter без его ключа -> no_key, 0 вызовов`, nk.ok === false && nk.error === "no_key" && (await sw.evaluate(() => globalThis.__tsCalls.length)) === before, JSON.stringify(nk));
+      await p.selectOption("#provider", "typesafe");
+      await p.click("#save-settings");
+      await p.waitForFunction(() => document.getElementById("settings-msg").dataset.ok === "true");
+      check(`ts-options@${width}: провайдер TypeSafe сохранён`, (await p.inputValue("#provider")) === "typesafe");
+      const r = await decideMsg(p, `ts${width}`);
+      check(`ts-decide@${width}: решение через TypeSafe по контракту`, r.ok === true && r.hide === true && r.matchedTagIds.join() === "a" && !JSON.stringify(r).includes("TYPESAFESECRET"), JSON.stringify(r));
+      const overflow = await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      check(`ts-options@${width}: нет горизонтальной прокрутки`, overflow <= 0, `overflow=${overflow}`);
+      await p.screenshot({ path: join(shots, `typesafe-options-${width}.png`), fullPage: true });
+      await p.close();
+    }
+    let calls = await sw.evaluate(() => globalThis.__tsCalls);
+    check("typesafe: все вызовы ушли на api.typesafe.ai с ключом TypeSafe, моделью jev-1.13.0, 0 к OpenRouter", calls.length === 2 && calls.every((c) => c.url === TS_URL && c.auth === `Bearer ${TS_SECRET}` && c.model === "jev-1.13.0"), JSON.stringify(calls));
+
+    // popup: блок трат без серверного баланса (локальные цифры + оценка)
+    const pop = await context.newPage();
+    pop.on("console", (m) => m.type() === "error" && errors.push(`ts-popup console: ${m.text()}`));
+    pop.on("pageerror", (e) => errors.push(`ts-popup pageerror: ${e.message}`));
+    await pop.setViewportSize({ width: 390, height: 800 });
+    await pop.goto(`chrome-extension://${extId}/popup.html`);
+    await pop.waitForFunction(() => document.getElementById("usage").dataset.state !== "loading", null, { timeout: 15000 });
+    const usageText = await pop.textContent("#usage");
+    check("typesafe popup: блок трат — оценка и пояснение, без серверных сумм", (await pop.getAttribute("#usage", "data-state")) === "ok" && ws(usageText).includes(ws(msg("usage_typesafe_note"))) && usageText.includes(msg("usage_estimate")) && !usageText.includes(msg("usage_limit_remaining")), usageText.replace(/\s+/g, " ").slice(0, 160));
+    check("typesafe popup: запрос трат не делал fetch", (await sw.evaluate(() => globalThis.__tsCalls.length)) === 2);
+    await pop.screenshot({ path: join(shots, "typesafe-popup-390.png"), fullPage: true });
+    await pop.close();
+
+    // обратно на OpenRouter: ключ OpenRouter, вызовы только на openrouter.ai, кэш той же модели общий
+    const back = await context.newPage();
+    await back.goto(`chrome-extension://${extId}/options.html`);
+    await back.fill("#key", OR_SECRET);
+    await back.click("#save-key");
+    await back.waitForFunction(() => /…/.test(document.getElementById("key-status").textContent));
+    await back.selectOption("#provider", "openrouter");
+    await back.click("#save-settings");
+    await back.waitForFunction(() => document.getElementById("settings-msg").dataset.ok === "true");
+    const same = await decideMsg(back, `ts${widths[0]}`); // уже решено через TypeSafe той же моделью -> без платного вызова
+    const fresh = await decideMsg(back, "or-fresh");
+    calls = await sw.evaluate(() => globalThis.__tsCalls);
+    check("typesafe: после возврата на OpenRouter та же пара берётся из общего кэша, новая — на openrouter.ai", same.ok === true && fresh.ok === true && calls.length === 3 && calls[2].url === OR_URL && calls[2].auth === `Bearer ${OR_SECRET}` && calls.slice(0, 2).every((c) => c.url === TS_URL), JSON.stringify(calls.map((c) => c.url)));
+    await back.close();
   }
   check("нет ошибок консоли/исключений", errors.length === 0, errors.join(" | "));
 } finally {

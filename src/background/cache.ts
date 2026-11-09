@@ -16,13 +16,18 @@ const MINUTE = 60_000;
 export const normText = tagIdentity;
 
 /** FNV-1a 64 бит → base36. Не криптографический: коллизия лишь подменяет значение в собственном кэше. */
-function tagKey(text: string): string {
+function tagKey(text: string, ns = ""): string {
   let h = 0xcbf29ce484222325n;
   for (const b of new TextEncoder().encode(normText(text))) {
     h ^= BigInt(b);
     h = (h * 0x100000001b3n) & 0xffffffffffffffffn;
   }
-  return h.toString(36);
+  const hash = h.toString(36);
+  // Инъективное кодирование: хэшируется ТОЛЬКО текст тега, пространство — отдельный префикс ключа записи.
+  // Базовая модель (ns = "") — прежний формат (чистый base36, без «~»); иначе `<модель>~<base36>`.
+  // Хэш не содержит «~», поэтому по последнему «~» пара (модель, хэш) восстанавливается однозначно, а ключ другой
+  // модели не может совпасть с ключом базовой, как бы ни выглядел текст тега.
+  return ns ? ns + "~" + hash : hash;
 }
 
 function shardOf(videoId: string): string {
@@ -104,11 +109,11 @@ export function createCache(o: CacheOptions) {
     return flushing;
   }
 
-  function peek(videoId: string, tags: { text: string }[]): (number | undefined)[] {
+  function peek(videoId: string, tags: { text: string }[], ns = ""): (number | undefined)[] {
     const rec = shards.get(shardOf(videoId))?.[videoId];
     if (!rec || expired(rec)) return tags.map(() => undefined);
     return tags.map((t) => {
-      const v = rec[1][tagKey(t.text)];
+      const v = rec[1][tagKey(t.text, ns)];
       return typeof v === "number" ? v / 1000 : undefined;
     });
   }
@@ -116,14 +121,14 @@ export function createCache(o: CacheOptions) {
   return {
     ready,
     /** Вероятности для тегов в порядке входа; undefined — пары нет или она просрочена. */
-    async get(videoId: string, tags: { text: string }[]): Promise<(number | undefined)[]> {
+    async get(videoId: string, tags: { text: string }[], ns = ""): Promise<(number | undefined)[]> {
       await ready;
-      return peek(videoId, tags);
+      return peek(videoId, tags, ns);
     },
     /** То же без ожидания: валидно только после `await ready` (нужно, чтобы проверка кэша и резерв в полёте шли без await между ними). */
     peek,
     /** Добавляет пары к видео (обновляет время записи видео). Параллельные set одного хода делят один kv.set. */
-    async set(videoId: string, add: PairIn[]): Promise<void> {
+    async set(videoId: string, add: PairIn[], ns = ""): Promise<void> {
       await ready;
       const sk = shardOf(videoId);
       const s = shards.get(sk)!;
@@ -135,7 +140,7 @@ export function createCache(o: CacheOptions) {
       }
       rec[0] = Math.ceil(o.now() / MINUTE); // округление вверх: запись живёт не меньше TTL
       for (const a of add) {
-        const k = tagKey(a.text);
+        const k = tagKey(a.text, ns);
         if (!(k in rec[1])) pairs++;
         rec[1][k] = Math.round(Math.min(1, Math.max(0, a.p)) * 1000);
       }

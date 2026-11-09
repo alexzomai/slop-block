@@ -5,7 +5,7 @@ import { SECRET, fakeKV } from "./helpers/fake";
 describe("settings", () => {
   it("defaults", async () => {
     const kv = fakeKV();
-    expect(await getSettings(kv)).toEqual({ model: "typesafe/jev-1.13", threshold: 0.7 });
+    expect(await getSettings(kv)).toEqual({ provider: "openrouter", model: "typesafe/jev-1.13", modelTypesafe: "jev-1.13.0", threshold: 0.7 });
     expect(DEFAULT_MODEL).toBe("typesafe/jev-1.13");
     expect(DEFAULT_THRESHOLD).toBe(0.7);
   });
@@ -33,6 +33,6 @@ describe("settings", () => {
     }
     expect(await saveSettings(kv, { model: "  ", threshold: 0.5 })).toEqual({ ok: false, code: "model_required" });
     expect(await saveSettings(kv, { model: "x/y", threshold: 2 })).toEqual({ ok: false, code: "threshold_range" });
-    expect(await getSettings(kv)).toEqual({ model: "x/y", threshold: 0.5 });
+    expect(await getSettings(kv)).toEqual({ provider: "openrouter", model: "x/y", modelTypesafe: "jev-1.13.0", threshold: 0.5 });
   });
 });

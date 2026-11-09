@@ -147,11 +147,11 @@ describe("FeedFilter: актуализация контекста по location 
     const a = make(S());
     a.f.schedule();
     await vi.advanceTimersByTimeAsync(400);
-    expect(a.sent).toHaveLength(3);
+    expect(a.sent).toHaveLength(5);
     a.live.onSearch = true; // pushState без finish / childList
     a.resolvers.splice(0).forEach((r) => r());
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(a.sent).toHaveLength(3);
+    expect(a.sent).toHaveLength(5);
     expect(a.env.gate).toBe(false);
     expect(a.cards.every(a.visible)).toBe(true);
     expect(a.f.snapshot().active).toBe(false);
@@ -176,7 +176,7 @@ describe("FeedFilter: актуализация контекста по location 
     a.live.onSearch = false;
     a.f.schedule();
     await vi.advanceTimersByTimeAsync(400);
-    expect(a.sent).toHaveLength(3);
+    expect(a.sent).toHaveLength(5);
     expect(a.env.gate).toBe(true);
   });
 });

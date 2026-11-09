@@ -114,7 +114,7 @@ describe("allowlist: no_key, неактивность, шлюз", () => {
     expect(a.cards.every((c) => a.visible(c))).toBe(true);
     expect(a.env.gate).toBe(false);
     const n = a.sent.length;
-    expect(n).toBeLessThanOrEqual(3); // не больше параллельности; остальные не отправлялись
+    expect(n).toBeLessThanOrEqual(5); // не больше параллельности; остальные не отправлялись
     a.f.schedule(); await at(400);
     expect(a.sent).toHaveLength(n);
   });

@@ -41,11 +41,18 @@ export function unrevealCard(el: Revealable): void {
  * с нарастающим индексом анимации — сетка перестраивается порциями, а не на каждый ответ.
  */
 export function createRevealer<E>(opts: { reveal(el: E, index: number): void; hide(el: E): void; delay?: number }): {
-  allow(el: E): void;
+  allow(el: E, instant?: boolean): void;
   disallow(el: E): void;
 } {
   const pending = new Set<E>();
+  const fast = new Set<E>(); // решения из кэша: без лесенки и без ожидания пачки
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let fastTimer: ReturnType<typeof setTimeout> | undefined;
+  const flushFast = (): void => {
+    fastTimer = undefined;
+    for (const el of fast) opts.reveal(el, 0);
+    fast.clear();
+  };
   const flush = (): void => {
     timer = undefined;
     let i = 0;
@@ -53,13 +60,50 @@ export function createRevealer<E>(opts: { reveal(el: E, index: number): void; hi
     pending.clear();
   };
   return {
-    allow(el) {
+    allow(el, instant = false) {
+      if (instant) {
+        pending.delete(el);
+        fast.add(el);
+        fastTimer ??= setTimeout(flushFast, 0);
+        return;
+      }
       pending.add(el);
       timer ??= setTimeout(flush, opts.delay ?? REVEAL_BATCH_MS);
     },
     disallow(el) {
       pending.delete(el);
+      fast.delete(el);
       opts.hide(el);
+    },
+  };
+}
+
+export const HIDE_BATCH_MS = 300;
+
+/**
+ * Пачечное скрытие blocklist: решения приходят по одному, а каждое скрытие схлопывает сетку (layout shift).
+ * Скрытия копятся и применяются не чаще раза за HIDE_BATCH_MS; до применения карточка видна (fail-open).
+ * Возврат карточки отменяет отложенное скрытие.
+ */
+export function createHider<E>(opts: { hide(el: E): void; show(el: E): void; delay?: number }): {
+  hide(el: E): void;
+  show(el: E): void;
+} {
+  const pending = new Set<E>();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const flush = (): void => {
+    timer = undefined;
+    for (const el of pending) opts.hide(el);
+    pending.clear();
+  };
+  return {
+    hide(el) {
+      pending.add(el);
+      timer ??= setTimeout(flush, opts.delay ?? HIDE_BATCH_MS);
+    },
+    show(el) {
+      pending.delete(el);
+      opts.show(el); // возврат безусловный и идемпотентный: карточка могла быть уже скрыта
     },
   };
 }

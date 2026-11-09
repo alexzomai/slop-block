@@ -12,10 +12,11 @@ describe("manifest (extension-shell)", () => {
     expect(manifest.permissions).toEqual(["storage"]);
   });
 
-  it("limits host_permissions to youtube and openrouter", () => {
+  it("limits host_permissions to youtube, openrouter and typesafe", () => {
     expect(manifest.host_permissions).toEqual([
       "https://www.youtube.com/*",
       "https://openrouter.ai/*",
+      "https://api.typesafe.ai/*",
     ]);
   });
 

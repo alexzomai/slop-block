@@ -63,22 +63,26 @@ describe("FeedFilter", () => {
     expect(cards.every((c) => !c.hidden)).toBe(true);
   });
 
-  it("дебаунс: много schedule → один проход", async () => {
+  it("дебаунс: первый проход сразу, дальше не чаще раза в 300 мс", async () => {
     const { f, cards, sent } = setup(S(["a"]), () => ok(false));
     cards.push({ id: "v1", title: "x", hidden: false });
     for (let i = 0; i < 10; i++) f.schedule();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(sent).toHaveLength(1); // ведущий фронт: простой ≥ 300 мс → без ожидания
+    cards.push({ id: "v2", title: "y", hidden: false });
+    for (let i = 0; i < 10; i++) f.schedule();
     await vi.advanceTimersByTimeAsync(100);
-    expect(sent).toHaveLength(0);
+    expect(sent).toHaveLength(1); // менее 300 мс с прохода — откладывается
     await flush();
-    expect(sent).toHaveLength(1);
+    expect(sent).toHaveLength(2);
   });
 
-  it("параллельность ≤ 3", async () => {
+  it("параллельность ≤ 5", async () => {
     let cur = 0, max = 0;
     const { f, cards } = setup(S(["a"]), async () => { cur++; max = Math.max(max, cur); await new Promise((r) => setTimeout(r, 50)); cur--; return ok(false); });
     for (let i = 0; i < 8; i++) cards.push({ id: `video${i}`, title: "x", hidden: false });
     f.schedule(); await vi.advanceTimersByTimeAsync(2000);
-    expect(max).toBe(3);
+    expect(max).toBe(5);
   });
 
   it("фильтр выключен или нет тегов → запросов нет", async () => {
@@ -113,5 +117,16 @@ describe("FeedFilter", () => {
     f.updateSettings(S(["a"], false));
     release(ok(true)); await flush();
     expect(cards[0]!.hidden).toBe(false);
+  });
+});
+
+describe("F4: оцениваются все загруженные карточки, а не только окно", () => {
+  it("30 карточек (в окне 5): решения по всем 30, скрыты подходящие под blocklist", async () => {
+    const { f, cards, sent } = setup(S(["программирование"]), (r) => ok(r.video.videoId.endsWith("0")));
+    for (let i = 0; i < 30; i++) cards.push({ id: `video${String(i).padStart(3, "0")}`, title: `T${i}`, hidden: false });
+    f.schedule();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(new Set(sent.map((r) => r.video.videoId)).size).toBe(30);
+    expect(cards.filter((c) => c.hidden).length).toBe(3);
   });
 });

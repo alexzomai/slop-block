@@ -34,12 +34,12 @@ async function run(outcome: Outcome, horizonMs = 400_000) {
 
 describe("повторы отправки", () => {
   const table: Array<[string, Outcome, number[]]> = [
-    ["no_key — терминально", { ok: false, error: "no_key" }, [300]],
-    ["bad_response — терминально", { ok: false, error: "bad_response" }, [300]],
-    ["network — 2 повтора", { ok: false, error: "network" }, [300, 30_300, 150_300]],
-    ["rate_limited — 2 повтора", { ok: false, error: "rate_limited" }, [300, 30_300, 150_300]],
-    ["исключение sendMessage — 2 повтора", "throw", [300, 30_300, 150_300]],
-    ["ответ undefined — терминально", "undefined", [300]],
+    ["no_key — терминально", { ok: false, error: "no_key" }, [0]],
+    ["bad_response — терминально", { ok: false, error: "bad_response" }, [0]],
+    ["network — 2 повтора", { ok: false, error: "network" }, [0, 30_000, 150_000]],
+    ["rate_limited — 2 повтора", { ok: false, error: "rate_limited" }, [0, 30_000, 150_000]],
+    ["исключение sendMessage — 2 повтора", "throw", [0, 30_000, 150_000]],
+    ["ответ undefined — терминально", "undefined", [0]],
   ];
   for (const [name, outcome, expected] of table) {
     it(`${name}: точные времена отправок, карточка видима`, async () => {
@@ -63,7 +63,7 @@ describe("повторы отправки", () => {
     }, TAGS);
     f.schedule();
     await vi.advanceTimersByTimeAsync(400_000);
-    expect(stamps).toEqual([300, 30_300]);
+    expect(stamps).toEqual([0, 30_000]);
     expect(card.hidden).toBe(true);
   });
 
@@ -81,6 +81,6 @@ describe("повторы отправки", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     f.updateSettings({ ...TAGS, tags: [{ id: "a", text: "tag", enabled: true }, { id: "b", text: "other", enabled: true }] });
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(stamps).toEqual([300, 60_300]);
+    expect(stamps).toEqual([0, 60_000]);
   });
 });

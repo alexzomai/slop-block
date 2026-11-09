@@ -4,11 +4,11 @@ Brief for AI coding agents working on **slop-block**.
 
 ## What this is
 
-A Chrome (Manifest V3) extension for YouTube. It filters the feed by user-written "smart tags". The hide/show decision comes from **TypeSafe Jev** (a System One decision model, `typesafe/jev-1.13`) called through **OpenRouter** with the **user's own API key**. There is no backend. Two modes: "Show only matching" (allowlist, default) and "Hide matching" (blocklist).
+A Chrome (Manifest V3) extension for YouTube. It filters the feed by user-written "smart tags". The hide/show decision comes from **TypeSafe Jev** (a System One decision model, `typesafe/jev-1.13`) called through **OpenRouter** (default) or the native **TypeSafe** API (`https://api.typesafe.ai/v1/systemone`) with the **user's own API key** for the selected provider. There is no backend. Two modes: "Show only matching" (allowlist, default) and "Hide matching" (blocklist).
 
 ## Layout
 
-- `src/background/` — service worker: Jev/OpenRouter client (`client.ts`, `jev.ts`), single request limiter (`limiter.ts`), deadlines, decision cache keyed by `(videoId, tag)` (`cache.ts`), spend tracking (`usage.ts`, `stats.ts`), message listener (`listener.ts`), settings/storage. `test-stub.ts` is a deterministic stand-in used only in `dist-test/`.
+- `src/background/` — service worker: Jev client for both providers (`client.ts`, `jev.ts`, provider registry `providers.ts`), single request limiter (`limiter.ts`), deadlines, decision cache keyed by `(videoId, tag)` plus the canonical model version, not the provider (`cache.ts`), spend tracking (`usage.ts`, `stats.ts`), message listener (`listener.ts`), settings/storage. `test-stub.ts` is a deterministic stand-in used only in `dist-test/`.
 - `src/content/` — runs on youtube.com: card selectors (`selectors.ts`), DOM reading (`dom.ts`), filter loop (`filter.ts`), allowlist/blocklist gating, subscriptions bypass, marks (`mark.ts`). Styles in `static/gate.css`. Feed autofill: `autofill.ts` (pure controller with cost limits: 5 empty portions in a row, 15 per page visit), `feed.ts` (DOM adapter: continuation re-entry without scrolling, indicator).
 - `src/popup/`, `src/options/` — UI (tags, mode, spend block; key/model/threshold). Strings come from `static/_locales/{en,ru}` via `chrome.i18n`.
 - `src/shared/` — contracts and helpers shared across contexts. `decision.ts` is the message contract between content and background; `settings.ts` holds tag rules (max 20 tags, 200 chars, `tagIdentity`).
@@ -35,9 +35,9 @@ e2e and screenshots use `CHROMIUM_PATH` (falls back to `/usr/bin/chromium`). Chr
 2. **Page text is read and written only via `textContent`** (no `innerHTML`; enforced by `tests/no-innerhtml.test.ts`). YouTube titles are untrusted input.
 3. **Fail-open.** Any error (no key, network, bad response, rate limit) must leave the page usable and never hide content by mistake in blocklist mode. Allowlist gating reveals/keeps per the documented states.
 4. **≤1 paid call per (videoId, tag) pair while cached (TTL 30d, capacity 20k, oldest evicted).** Concurrent requests for the same pair share one in-flight call; `tagIdentity` defines tag equality.
-5. **One limiter for every `fetch`** to OpenRouter (decision and key/usage calls alike).
+5. **One limiter for every `fetch`** to any provider (OpenRouter and TypeSafe; decision and key/usage calls alike).
 6. **A deadline on every fetch and on reading the body.**
-7. Send OpenRouter only the minimum: title, channel, description snippet. No remote code; permissions stay at `storage` plus host access to youtube.com and openrouter.ai.
+7. Send the provider (OpenRouter or TypeSafe) only the minimum: title, channel, description snippet. No remote code; permissions stay at `storage` plus host access to youtube.com, openrouter.ai and api.typesafe.ai. Each provider key (`openrouterKey`, `typesafeKey`) obeys invariant 1 and goes only to its own provider.
 8. Do not change `src/shared/decision.ts` contract without a spec change.
 
 ## Process (OpenSpec)
@@ -52,7 +52,7 @@ Before finishing: `npm run typecheck && npm run lint && npm test && npm run buil
 
 - TypeScript, ESM, esbuild IIFE bundles per entry (`background`, `content`, `options`, `popup`); no runtime dependencies.
 - UI strings go through `chrome.i18n` (`_locales/en` and `ru` must stay in key parity; tests enforce it).
-- Settings live in `chrome.storage.sync` (`slop.settings`, `slop.tag.<id>`); secrets and decision cache live in `chrome.storage.local`.
+- Settings live in `chrome.storage.sync` (`slop.settings`, `slop.tag.<id>`); secrets and decision cache live in `chrome.storage.local` (the provider choice and per-provider models are in its `settings`; TypeSafe has no balance API, so its spend block is local counts in `usageStatsTypesafe`).
 - Settings fields: `enabled`, `tags`, `mode`, `skipSubscriptions`, `feedTarget` (6–30, default 12). Defaults: mode `allowlist`, "Don't filter subscriptions" on, model `typesafe/jev-1.13`, threshold `0.7`.
 - Unit tests run in Node without a browser (vitest); `e2e/` is the only browser suite.
 - Commit messages are short and in the style of `git log`; one change per branch named after the OpenSpec change.

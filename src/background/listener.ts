@@ -9,13 +9,17 @@ interface OnMessage {
 export function registerListener(
   onMessage: OnMessage,
   ownId: string,
-  h: { decide(msg: unknown): Promise<unknown>; usage(): Promise<UsageResponse> },
+  h: { decide(msg: unknown): Promise<unknown>; peek?(msg: unknown): Promise<unknown>; usage(): Promise<UsageResponse> },
 ): void {
   onMessage.addListener((msg, sender, sendResponse) => {
     if (sender.id !== ownId) return false;
     const type = typeof msg === "object" && msg !== null ? (msg as { type?: unknown }).type : undefined;
     if (type === "slop/decide") {
       h.decide(msg).then(sendResponse, () => sendResponse({ ok: false, error: "network" }));
+      return true;
+    }
+    if (type === "slop/peek" && h.peek) {
+      h.peek(msg).then(sendResponse, () => sendResponse({ ok: false, error: "bad_response" }));
       return true;
     }
     if (type === "slop/usage") {

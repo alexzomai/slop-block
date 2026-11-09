@@ -1,16 +1,17 @@
-import type { DecideRequest, DecideResponse } from "../shared/decision";
+import type { DecideRequest, DecideResponse, PeekRequest, PeekResponse } from "../shared/decision";
 import { isSearchPath, isSubscriptionsPath } from "../shared/paths";
 import type { Settings } from "../shared/settings";
 import { loadSettings, subscribeSettings } from "../shared/storage";
 import { Autofill } from "./autofill";
-import { createRevealer, hideCard, revealCard, showCard, unrevealCard } from "./dom";
-import { findContinuation, IndicatorView, measureFilled, reenter } from "./feed";
+import { createHider, createRevealer, hideCard, revealCard, showCard, unrevealCard } from "./dom";
+import { CONTINUATION_SELECTOR, HOLD_ATTR, PEEK_ATTR, createHold, findContinuation, IndicatorView, measureFilled, reenter, restoreScroll } from "./feed";
 import { FeedFilter } from "./filter";
 import { markLoaded } from "./mark";
 import { extractMeta, findCards } from "./selectors";
 
 const root = document.documentElement;
 const GATE = "data-slop-gate";
+const HOLD = HOLD_ATTR;
 const WATCHDOG_MS = 3000;
 const AUTOFILL_DELAY_MS = 250;
 
@@ -18,7 +19,11 @@ markLoaded(root);
 // Синхронно, до первой отрисовки карточек: шлюз allowlist взведён (gate.css скрывает карточки без решения).
 // Настройки ещё не прочитаны — следующий шаг приведёт атрибут к реальному состоянию; любой сбой его снимает.
 root.setAttribute(GATE, "allowlist");
-const failOpen = (): void => root.removeAttribute(GATE);
+// Удержание continuation (HOLD) взводит только контроллер после проверки геометрии; failOpen и watchdog снимают оба атрибута.
+const failOpen = (): void => {
+  root.removeAttribute(GATE);
+  root.removeAttribute(HOLD);
+};
 const watchdog = setTimeout(failOpen, WATCHDOG_MS);
 
 const onSubs = (): boolean => isSubscriptionsPath(location.pathname);
@@ -31,6 +36,7 @@ async function main(): Promise<void> {
     reveal: (c, i) => revealCard(c as HTMLElement, i),
     hide: (c) => unrevealCard(c as HTMLElement),
   });
+  const hider = createHider<Element>({ hide: (c) => hideCard(c as HTMLElement), show: (c) => showCard(c as HTMLElement) });
   const view = new IndicatorView();
   let autofillTimer: ReturnType<typeof setTimeout> | undefined;
   // Дебаунс: после раскрытия карточек (REVEAL_BATCH_MS) и раскладки; сам evaluate() решений не принимает.
@@ -47,15 +53,35 @@ async function main(): Promise<void> {
       context: () => ({ onSubscriptions: onSubs(), onSearch: onSearch() }),
       findCards: () => findCards(document),
       extract: (c) => extractMeta(c),
-      hide: (c) => hideCard(c as HTMLElement),
-      show: (c) => showCard(c as HTMLElement),
-      allow: (c) => revealer.allow(c),
+      hide: (c) => hider.hide(c),
+      show: (c) => hider.show(c),
+      allow: (c, instant) => revealer.allow(c, instant),
       disallow: (c) => revealer.disallow(c),
       setGate: (on) => (on ? root.setAttribute(GATE, "allowlist") : root.removeAttribute(GATE)),
       send: (req: DecideRequest) => chrome.runtime.sendMessage(req) as Promise<DecideResponse>,
+      peek: (req: PeekRequest) => chrome.runtime.sendMessage(req) as Promise<PeekResponse>,
     },
     current,
     { onSubscriptions: onSubs(), onSearch: onSearch() },
+  );
+  const setHold = createHold(
+    root,
+    () => {
+      const se = document.scrollingElement;
+      return se ? { height: se.scrollHeight, top: se.scrollTop, left: se.scrollLeft } : { height: 0, top: 0, left: 0 };
+    },
+    () => findContinuation(document) !== null,
+    () => {
+      return [...document.querySelectorAll(CONTINUATION_SELECTOR)].every((c) => {
+        if (c.hasAttribute(PEEK_ATTR)) return true; // наш inline transform reenter, а не страничный
+        const cs = getComputedStyle(c);
+        return cs.transform === "none" && cs.translate === "none" && cs.rotate === "none" && cs.scale === "none" && cs.position === "static";
+      });
+    },
+    (g) => {
+      const se = document.scrollingElement;
+      if (se) restoreScroll(se, g);
+    },
   );
   const autofill = new Autofill({
     snapshot: () => {
@@ -75,6 +101,8 @@ async function main(): Promise<void> {
       return c ? reenter(c, undefined, () => autofill.markUnsafe()) : "ok";
     },
     indicator: (state) => view.set(state),
+    hold: setHold,
+    liveCards: () => findCards(document).length,
     now: () => Date.now(),
     wake: (ms) => setTimeout(() => evaluateSoon(0), ms + 50),
   });
@@ -114,14 +142,29 @@ async function main(): Promise<void> {
   document.addEventListener("yt-navigate-finish", reconfigure);
   window.addEventListener("popstate", reconfigure);
   // Следим только за childList: собственное скрытие меняет атрибуты и цикла не вызывает.
+  autofill.observe(); // исходное число карточек фиксируется в момент подключения наблюдателя, до окна дебаунса
   new MutationObserver(() => {
     try {
       if (location.pathname !== path) reconfigure();
+      autofill.onDomChange(); // синхронно: удержание continuation возвращается до первого кадра
       filter.schedule();
     } catch {
       failOpen();
     }
   }).observe(root, { childList: true, subtree: true });
+  // Жест пользователя после остановки по лимиту: новый ограниченный бюджет (скрипт событий не создаёт: isTrusted).
+  const intent = (e: Event): void => {
+    if (e.isTrusted) autofill.userIntent();
+  };
+  window.addEventListener("wheel", intent, { passive: true });
+  window.addEventListener("touchmove", intent, { passive: true });
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      if (["PageDown", "End", "ArrowDown", " ", "Spacebar"].includes(e.key)) intent(e);
+    },
+    { passive: true },
+  );
   filter.schedule();
 }
 

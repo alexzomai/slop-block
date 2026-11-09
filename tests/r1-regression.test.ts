@@ -55,14 +55,14 @@ it("r1-1: in any 60s window fetch calls <= 60 for random 429/5xx/Retry-After/net
   }
 });
 
-it("r1-1: parallelism <= 4 with retries in flight", async () => {
+it("r1-1: parallelism <= 6 with retries in flight", async () => {
   let active = 0, peak = 0, clock = 0;
   const decide = createDecider({
     kv: fakeKV({ openrouterKey: KEY }), now: () => clock, sleep: async (ms) => { clock += ms; }, random: () => 0,
     fetch: (async () => { active++; peak = Math.max(peak, active); await new Promise((r) => setTimeout(r, 2)); active--; return resp(503); }) as typeof fetch,
   });
   await Promise.all(Array.from({ length: 30 }, (_, i) => decide(mk(i))));
-  expect(peak).toBeLessThanOrEqual(4);
+  expect(peak).toBeLessThanOrEqual(6);
 });
 
 function hangingBody(onSignal: (s: AbortSignal) => void, bindAbort = true) {

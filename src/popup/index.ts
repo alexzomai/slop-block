@@ -1,4 +1,5 @@
-import { KEY_STORAGE } from "../background/settings";
+import { PROVIDERS, parseProvider, type ProviderId } from "../background/providers";
+import { SETTINGS_STORAGE } from "../background/settings";
 import { activeTags, type Mode, type Settings } from "../shared/settings";
 import { loadSettings, saveSettings } from "../shared/storage";
 import type { UsageResponse } from "../shared/usage";
@@ -14,11 +15,14 @@ function $(id: string): HTMLElement {
 }
 
 let keyPresent = true; // пока не знаем — подсказку не показываем
+let keyProvider: ProviderId = "openrouter";
 
-/** Факт наличия ключа; само значение никуда не попадает. */
+/** Факт наличия ключа активного провайдера; значения ключей сразу сворачиваются в boolean и никуда не передаются. */
 async function readKeyPresent(): Promise<boolean> {
   try {
-    const v = (await chrome.storage.local.get(KEY_STORAGE))[KEY_STORAGE];
+    const all = await chrome.storage.local.get([SETTINGS_STORAGE, PROVIDERS.openrouter.keyStorage, PROVIDERS.typesafe.keyStorage]);
+    keyProvider = parseProvider((all[SETTINGS_STORAGE] as { provider?: unknown } | undefined)?.provider);
+    const v = all[PROVIDERS[keyProvider].keyStorage];
     return typeof v === "string" && v.length > 0;
   } catch {
     return true; // не смогли прочитать — подсказку не показываем
@@ -66,6 +70,7 @@ function render(c: PopupController, s: Settings, message: PopupMessage): void {
   ($("text") as HTMLTextAreaElement).placeholder = mt.placeholder;
   $("text").setAttribute("aria-label", mt.label);
   $("mode-title").textContent = mt.title;
+  $("key-hint-text").textContent = t(keyProvider === "typesafe" ? "popup_key_hint_typesafe" : "popup_key_hint");
   $("key-hint").hidden = keyPresent || !s.enabled || activeTags(s).length === 0;
   $("msg").textContent = messageText(message);
   const list = $("tags");
@@ -96,8 +101,8 @@ function renderUsage(r: UsageResponse | null | undefined): void {
   const v = usageView(r);
   $("usage").dataset.state = v.state;
   $("usage-text").textContent = v.text ?? ""; // только textContent
-  $("usage-text").hidden = v.state === "ok";
-  $("usage-settings").hidden = v.state !== "no_key";
+  $("usage-text").hidden = v.state === "ok" && !v.text;
+  $("usage-settings").hidden = v.state !== "no_key" && v.state !== "key_rejected";
   const dl = $("usage-rows");
   dl.replaceChildren();
   for (const [k, val] of v.rows ?? []) {

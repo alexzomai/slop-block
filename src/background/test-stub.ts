@@ -41,6 +41,13 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
       sendResponse(usage());
       return false;
     }
+    if ((msg as { type?: unknown } | null)?.type === "slop/peek") {
+      // у заглушки нет кэша: все видео — промахи (e2e считает число проверок кэша)
+      const g = globalThis as { __peeks?: number };
+      g.__peeks = (g.__peeks ?? 0) + 1;
+      sendResponse({ ok: true, decisions: {} });
+      return false;
+    }
     if (m?.type !== "slop/decide" || !m.video || !m.tags) return false;
     const g = globalThis as { __calls?: string[]; __forceError?: ForcedError; __delay?: number };
     (g.__calls ??= []).push(m.video.videoId);

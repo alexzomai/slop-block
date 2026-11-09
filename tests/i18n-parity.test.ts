@@ -38,7 +38,7 @@ describe("messages.json: паритет en/ru", () => {
   });
   it("русский словарь не копия английского (кроме брендовых значений)", () => {
     const same = Object.keys(en).filter((k) => en[k]!.message === ru[k]!.message);
-    expect(same.sort()).toEqual(["ext_name", "options_key_placeholder", "popup_counter", "usage_pair", "usage_less_than"].sort());
+    expect(same.sort()).toEqual(["ext_name", "options_key_placeholder", "options_provider_openrouter", "options_provider_typesafe", "popup_counter", "usage_pair", "usage_less_than"].sort());
   });
 });
 

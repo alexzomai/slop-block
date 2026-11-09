@@ -2,6 +2,9 @@ import type { LocalStats } from "../shared/usage";
 import type { KV } from "./storage";
 
 export const STATS_STORAGE = "usageStats";
+/** Отдельный счётчик TypeSafe (у него нет API баланса). */
+export const STATS_STORAGE_TYPESAFE = "usageStatsTypesafe";
+export const statsStorage = (provider: "openrouter" | "typesafe"): string => (provider === "typesafe" ? STATS_STORAGE_TYPESAFE : STATS_STORAGE);
 
 interface Stored { day: string; requestsToday: number; tokensToday: number; requestsTotal: number; tokensTotal: number }
 
@@ -22,9 +25,10 @@ function normalize(raw: unknown, today: string): Stored {
 }
 
 /** Локальный счётчик запросов Jev. Пишет только background; запись — строго по очереди. */
-export function createStats(o: { kv: KV; now: () => number }) {
+export function createStats(o: { kv: KV; now: () => number; storage?: string }) {
+  const storage = o.storage ?? STATS_STORAGE;
   let queue: Promise<void> = Promise.resolve();
-  const load = async () => normalize((await o.kv.get(STATS_STORAGE))[STATS_STORAGE], dayOf(o.now()));
+  const load = async () => normalize((await o.kv.get(storage))[storage], dayOf(o.now()));
 
   return {
     async read(): Promise<LocalStats> {
@@ -45,7 +49,7 @@ export function createStats(o: { kv: KV; now: () => number }) {
           const s = await load();
           s.requestsToday++; s.requestsTotal++;
           s.tokensToday += tokens; s.tokensTotal += tokens;
-          await o.kv.set({ [STATS_STORAGE]: s });
+          await o.kv.set({ [storage]: s });
         } catch {
           // сбой учёта не должен влиять на решение
         }

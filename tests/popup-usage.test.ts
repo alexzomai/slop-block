@@ -90,7 +90,7 @@ describe("popup и ключ", () => {
       if (f === "index.ts") {
         const fn = s.slice(s.indexOf("async function readKeyPresent"), s.indexOf("function render("));
         expect(fn).toContain("typeof v === \"string\" && v.length > 0");
-        expect(s.replace(fn, "").replace(/^import \{ KEY_STORAGE \} from "..\/background\/settings";\n/m, "")).not.toMatch(/KEY_STORAGE|openrouterKey|storage\.local/);
+        expect(s.replace(fn, "").replace(/^import \{ SETTINGS_STORAGE \} from "..\/background\/settings";\n/m, "")).not.toMatch(/KEY_STORAGE|openrouterKey|storage\.local/);
       }
     }
     expect(reads).toHaveLength(1);

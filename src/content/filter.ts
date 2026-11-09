@@ -1,4 +1,4 @@
-import type { DecideRequest, DecideResponse, SmartTag, VideoMeta } from "../shared/decision";
+import type { DecideRequest, DecideResponse, PeekRequest, PeekResponse, SmartTag, VideoMeta } from "../shared/decision";
 import { effectiveState, type Mode, type Settings } from "../shared/settings";
 
 export interface FilterDeps<C> {
@@ -8,11 +8,13 @@ export interface FilterDeps<C> {
   hide(card: C): void;
   show(card: C): void;
   /** allowlist: разрешить (проявить) / снова запретить карточку; по умолчанию скрытие делает CSS-шлюз. */
-  allow?(card: C): void;
+  allow?(card: C, instant?: boolean): void;
   disallow?(card: C): void;
   /** Взвести/снять CSS-шлюз (единый предохранитель allowlist). */
   setGate?(on: boolean): void;
   send(req: DecideRequest): Promise<DecideResponse>;
+  /** Пакетная проверка кэша решений (без платных вызовов). Нет метода — все карточки идут в send. */
+  peek?(req: PeekRequest): Promise<PeekResponse>;
   /** После каждого прохода scan() (для автодогрузки ленты). Исключения глушатся. */
   onSettled?(): void;
   /** Актуальный контекст страницы (по location). Если задан, проверяется перед каждой отправкой и применением ответа. */
@@ -22,13 +24,20 @@ export interface FilterDeps<C> {
 export interface Context { onSubscriptions: boolean; onSearch?: boolean }
 
 export const DEBOUNCE_MS = 300;
-export const MAX_PARALLEL = 3;
+/** Платных запросов в полёте; строго меньше maxConcurrent лимитера background (6) — слот остаётся запросам ключа/трат. */
+export const MAX_PARALLEL = 5;
+/** Дедлайн пакетной проверки кэша; просрочка = сбой peek (все карточки идут в send). */
+export const PEEK_TIMEOUT_MS = 5_000;
+/** Видео в одном сообщении peek (предел background — 100). */
+export const PEEK_CHUNK = 100;
 /** Дедлайн одной попытки: просрочка = временный сбой (как исключение sendMessage). */
 export const ATTEMPT_TIMEOUT_MS = 20_000;
 /** Задержки повторов после временного сбоя (network / rate_limited / исключение sendMessage / дедлайн): N = 2. */
 export const RETRY_DELAYS_MS = [30_000, 120_000] as const;
 
 interface Decision { hide: boolean; matched: boolean }
+/** Запись упорядоченного буфера: порядок обнаружения карточек; промах выпускается в платную очередь только когда все более ранние записи решены. */
+interface Pending { meta: VideoMeta; state: "peeking" | "miss" | "done" }
 
 /** Логика фильтра без привязки к DOM: дедупликация, очередь, fail-open, обратимое скрытие/проявление. */
 export class FeedFilter<C> {
@@ -40,8 +49,12 @@ export class FeedFilter<C> {
   private ctx: Context = { onSubscriptions: false };
   private settings: Settings | undefined;
   private decisions = new Map<string, Decision>(); // videoId → решение
-  private queued = new Set<string>(); // в очереди или в полёте
+  private queued = new Set<string>(); // в очереди, в полёте или в проверке кэша (peek)
+  private instant = new Set<string>(); // решения из кэша: проявлять без лесенки анимации
+  private lastScan = -Infinity;
   private queue: VideoMeta[] = [];
+  /** Новые видео в порядке обнаружения (между пакетами и между проходами) до выпуска в очередь платных запросов. */
+  private ordered: Pending[] = [];
   private fails = new Map<string, { count: number; retryAt: number }>(); // временные сбои
   /** Больше не отправляем: bad_response / неразборчивый ответ / исчерпанные повторы. В allowlist такая карточка видна (fail-open). */
   private terminal = new Set<string>();
@@ -62,10 +75,12 @@ export class FeedFilter<C> {
   /** Запланировать проход с дебаунсом. */
   schedule(): void {
     if (this.timer !== undefined) return;
+    // ведущий фронт: если простоя ≥ DEBOUNCE_MS, проход сразу; иначе по остатку интервала
+    const wait = Math.max(0, this.lastScan + DEBOUNCE_MS - Date.now());
     this.timer = setTimeout(() => {
       this.timer = undefined;
       this.scan();
-    }, DEBOUNCE_MS);
+    }, wait);
   }
 
   updateSettings(settings: Settings): void {
@@ -112,7 +127,9 @@ export class FeedFilter<C> {
       this.generation++; // ответы устаревших запросов игнорируются
       this.decisions.clear();
       this.queued.clear();
+      this.instant.clear();
       this.queue = [];
+      this.ordered = [];
       this.fails.clear();
       this.terminal.clear();
     }
@@ -140,7 +157,7 @@ export class FeedFilter<C> {
     return d ? d.matched : this.terminal.has(videoId);
   }
 
-  private place(card: C, visible: boolean): void {
+  private place(card: C, visible: boolean, instant = false): void {
     if (this.mode === "blocklist") {
       if (!visible && !this.hidden.has(card)) {
         this.deps.hide(card);
@@ -150,7 +167,7 @@ export class FeedFilter<C> {
         this.hidden.delete(card);
       }
     } else if (visible && !this.shown.has(card)) {
-      this.deps.allow?.(card);
+      this.deps.allow?.(card, instant);
       this.shown.add(card);
     } else if (!visible && this.shown.has(card)) {
       this.deps.disallow?.(card);
@@ -164,6 +181,7 @@ export class FeedFilter<C> {
   }
 
   scan(enqueue = true): void {
+    if (enqueue) this.lastScan = Date.now(); // scan(false) из reconfigure — без запросов: интервал дебаунса не расходует
     try {
       this.doScan(enqueue);
     } finally {
@@ -188,13 +206,15 @@ export class FeedFilter<C> {
     const found = this.deps.findCards();
     this.cardCount = found.length;
     const undecided = new Set<string>();
+    const fresh: VideoMeta[] = []; // новые в порядке страницы: сначала проверка кэша, потом очередь
     for (const card of found) {
       const meta = this.deps.extract(card);
       if (!meta) {
         this.place(card, true); // карточка без id (реклама, плейсхолдер) не оценивается и не должна пропадать
         continue;
       }
-      this.place(card, this.visible(meta.videoId));
+      this.place(card, this.visible(meta.videoId), this.instant.has(meta.videoId));
+      if (this.shown.has(card)) this.instant.delete(meta.videoId);
       if (!this.decisions.has(meta.videoId) && !this.terminal.has(meta.videoId)) {
         const f0 = this.fails.get(meta.videoId);
         if (!(f0 && (f0.count > RETRY_DELAYS_MS.length || f0.retryAt > now))) undecided.add(meta.videoId);
@@ -204,10 +224,74 @@ export class FeedFilter<C> {
       const f = this.fails.get(meta.videoId);
       if (f && (f.count > RETRY_DELAYS_MS.length || f.retryAt > now)) continue;
       this.queued.add(meta.videoId);
-      this.queue.push(meta);
+      fresh.push(meta);
     }
     this.waiting = undecided.size;
+    if (fresh.length > 0) this.enqueue(fresh);
     this.pump();
+  }
+
+  /** Новые видео: через пакетную проверку кэша, если она доступна; иначе сразу в очередь платных запросов. */
+  private enqueue(fresh: VideoMeta[]): void {
+    if (!this.deps.peek) {
+      this.queue.push(...fresh);
+      return;
+    }
+    const entries: Pending[] = fresh.map((meta) => ({ meta, state: "peeking" }));
+    this.ordered.push(...entries);
+    for (let i = 0; i < entries.length; i += PEEK_CHUNK) void this.peekBatch(entries.slice(i, i + PEEK_CHUNK), this.generation);
+  }
+
+  /** Выпуск промахов в платную очередь строго в порядке обнаружения: пока более ранняя запись ждёт peek, поздние ждут её (дедлайн peek ограничивает ожидание). */
+  private release(): void {
+    while (this.ordered.length > 0 && this.ordered[0]!.state !== "peeking") {
+      const e = this.ordered.shift()!;
+      if (e.state === "miss") this.queue.push(e.meta);
+    }
+  }
+
+  private async peekBatch(entries: Pending[], gen: number): Promise<void> {
+    const metas = entries.map((e) => e.meta);
+    const res = await this.withDeadline(() => this.deps.peek!({ type: "slop/peek", videos: metas, tags: this.tags }), PEEK_TIMEOUT_MS);
+    this.syncContext(); // ответ другого контекста не применяется (поколение сброшено)
+    if (gen !== this.generation) return;
+    if (isRecord(res) && res.ok === false && res.error === "no_key") {
+      this.noKey();
+    } else if (isRecord(res) && res.ok === true && isRecord(res.decisions)) {
+      const decisions = res.decisions as Record<string, unknown>;
+      for (const e of entries) {
+        const id = e.meta.videoId;
+        const d = Object.prototype.hasOwnProperty.call(decisions, id) ? decisions[id] : undefined;
+        if (this.applyDecision(id, d)) {
+          this.queued.delete(id);
+          this.instant.add(id); // хит применяется сразу, не дожидаясь прочих пакетов
+          e.state = "done";
+        } else {
+          e.state = "miss"; // промах кэша или неразборчивый элемент
+        }
+      }
+    } else {
+      for (const e of entries) e.state = "miss"; // fail-open: как без peek, порядок сохраняется
+    }
+    this.release();
+    this.scan();
+    this.pump();
+  }
+
+  private applyDecision(videoId: string, res: unknown): boolean {
+    if (isRecord(res) && res.ok === true && typeof res.hide === "boolean" && Array.isArray(res.matchedTagIds)) {
+      this.decisions.set(videoId, { hide: res.hide, matched: res.matchedTagIds.length > 0 });
+      return true;
+    }
+    return false;
+  }
+
+  private noKey(): void {
+    this.keyMissing = true; // режим неактивен для всей страницы до смены настроек
+    this.active = false;
+    this.queue = [];
+    this.ordered = [];
+    this.queued.clear();
   }
 
   private pump(): void {
@@ -221,22 +305,30 @@ export class FeedFilter<C> {
     }
   }
 
-  /** Отправка с дедлайном; результат: ответ, либо "threw" (исключение / просрочка). */
-  private async attempt(meta: VideoMeta): Promise<DecideResponse | "threw"> {
+  /** Результат с дедлайном: значение либо "threw" (исключение / просрочка). */
+  private async withDeadline<T>(start: () => Promise<T>, ms: number): Promise<T | "threw"> {
     let t: ReturnType<typeof setTimeout> | undefined;
     const deadline = new Promise<"threw">((resolve) => {
-      t = setTimeout(() => resolve("threw"), ATTEMPT_TIMEOUT_MS);
+      t = setTimeout(() => resolve("threw"), ms);
     });
+    let started: Promise<T>;
     try {
-      return await Promise.race([
-        this.deps.send({ type: "slop/decide", video: meta, tags: this.tags }).catch((): "threw" => "threw"),
-        deadline,
-      ]);
+      started = start(); // синхронно: порядок и момент отправки не меняются
+    } catch {
+      started = Promise.reject(new Error("threw"));
+    }
+    try {
+      return await Promise.race([started.catch((): "threw" => "threw"), deadline]);
     } catch {
       return "threw";
     } finally {
       clearTimeout(t);
     }
+  }
+
+  /** Отправка с дедлайном; результат: ответ, либо "threw" (исключение / просрочка). */
+  private attempt(meta: VideoMeta): Promise<DecideResponse | "threw"> {
+    return this.withDeadline(() => this.deps.send({ type: "slop/decide", video: meta, tags: this.tags }), ATTEMPT_TIMEOUT_MS);
   }
 
   private async run(meta: VideoMeta, gen: number): Promise<void> {
@@ -247,13 +339,10 @@ export class FeedFilter<C> {
       this.queued.delete(meta.videoId);
       if (res === "threw") {
         this.retryLater(meta.videoId, gen);
-      } else if (isRecord(res) && res.ok === true && typeof res.hide === "boolean" && Array.isArray(res.matchedTagIds)) {
-        this.decisions.set(meta.videoId, { hide: res.hide, matched: res.matchedTagIds.length > 0 });
+      } else if (this.applyDecision(meta.videoId, res)) {
+        // решение применено
       } else if (isRecord(res) && res.ok === false && res.error === "no_key") {
-        this.keyMissing = true; // режим неактивен для всей страницы до смены настроек
-        this.active = false;
-        this.queue = [];
-        this.queued.clear();
+        this.noKey();
       } else if (isRecord(res) && res.ok === false && (res.error === "network" || res.error === "rate_limited")) {
         this.retryLater(meta.videoId, gen);
       } else {

@@ -12,12 +12,15 @@ ytd-continuation-item-renderer{display:block;grid-column:1/-1;height:60px;text-a
 <script>
 // Эмуляция YouTube: continuation при ВХОДЕ в зону видимости (IntersectionObserver) добавляет порцию карточек.
 // Параметры: first — подходящих среди первых 6, good — подходящих в порции, per — размер порции,
+// ghost — см. ниже, late — continuation вставляется в DOM через столько мс после загрузки, lat — задержка загрузки порции (мс, по умолчанию 150), renew=1 — после каждой порции новый continuation (поведение YouTube: цепочка порций, пока он в окне),
 // parts — сколько всего порций (0 — continuation не грузит ничего), ch — высота карточки (px),
 // list — одна колонка без grid, anchor=none — body{overflow-anchor:none},
 // probe=bottom|<px> — когда проявились все first карточек, прокрутить и покадрово записывать
 // scrollHeight/scrollTop (window.__rec) до window.__stopProbe = true. Запасного padding снизу нет.
 const q = new URLSearchParams(location.search);
 const num = (k, d) => (q.has(k) ? Number(q.get(k)) : d);
+const renew = q.get("renew") === "1";
+const lat = num("lat", 150); // задержка порции, мс (у настоящего YouTube — сотни мс)
 const first = num("first", 2), good = num("good", 5), per = num("per", 10), parts = num("parts", 100);
 // css — произвольный CSS страницы (например, свой transform/margin/position у continuation или предков)
 if (q.has("css")) { const st = document.createElement("style"); st.textContent = q.get("css"); document.head.append(st); }
@@ -32,7 +35,7 @@ for (const [o, n] of [[window, "scrollTo"], [window, "scrollBy"], [Element.proto
   const orig = o[n];
   o[n] = function (...a) { window.__scrollApi++; return orig.apply(this, a); };
 }
-const cont = document.getElementById("cont");
+let cont = document.getElementById("cont");
 let n = 0;
 function addCards(count, matched) {
   for (let i = 0; i < count; i++) {
@@ -48,7 +51,7 @@ function addCards(count, matched) {
 addCards(6, first);
 // счётчик попыток расширения: continuation получает inline transform (выход/вход для IntersectionObserver)
 window.__reenters = 0;
-new MutationObserver(() => { if (cont.style.transform !== "") window.__reenters++; }).observe(cont, { attributes: true, attributeFilter: ["style"] });
+new MutationObserver((ms) => { for (const m of ms) if (m.target.tagName === "YTD-CONTINUATION-ITEM-RENDERER" && m.target.style.transform !== "") window.__reenters++; }).observe(document.getElementById("contents"), { attributes: true, attributeFilter: ["style"], subtree: true });
 if (q.has("probe")) {
   const want = num("first", 2);
   window.__rec = [];
@@ -61,6 +64,9 @@ if (q.has("probe")) {
   new MutationObserver(() => {
     if (started || document.querySelectorAll("[data-slop-show]").length < want) return;
     started = true;
+    // состояние ДО выставления нижней позиции: триггер ещё не применялся, индикатор автодогрузки уже стоит
+    window.__probePre = window.__reenters;
+    window.__probeInd = !!document.getElementById("slop-feed-status");
     const where = q.get("probe") === "bottom" ? document.scrollingElement.scrollHeight : Number(q.get("probe"));
     rawScrollTo({ top: where, left: 0, behavior: "instant" }); // мгновенно: пробе нужна исходная позиция даже при CSS scroll-behavior:smooth
     window.__probeStart = [document.scrollingElement.scrollHeight, document.scrollingElement.scrollTop];
@@ -68,17 +74,39 @@ if (q.has("probe")) {
   }).observe(document.getElementById("contents"), { attributes: true, subtree: true, attributeFilter: ["data-slop-show"] });
 }
 let loading = false;
-new IntersectionObserver((es) => {
+const io = new IntersectionObserver((es) => {
   for (const e of es) {
     if (!e.isIntersecting || loading || window.__portions >= parts) continue;
     loading = true;
     setTimeout(() => {
       addCards(per, good);
       window.__portions++;
+      (window.__log ??= []).push({ t: Math.round(performance.now()), cards: n, hold: document.documentElement.hasAttribute("data-slop-hold"), re: window.__reenters });
       loading = false;
       if (window.__portions >= parts) cont.remove();
-    }, 150);
+      else if (renew) { // как настоящий YouTube: после порции создаётся НОВЫЙ continuation, и он сразу наблюдается (в окне — грузит снова)
+        cont.remove();
+        cont = document.createElement("ytd-continuation-item-renderer");
+        cont.id = "cont";
+        cont.textContent = "загрузка…";
+        document.getElementById("contents").append(cont);
+        io.observe(cont);
+      }
+    }, lat);
   }
-}).observe(cont);
+});
+io.observe(cont);
+// ghost=<px> — второй continuation со страничным transform и абсолютным позиционированием: даёт прокручиваемое
+// переполнение (док 1000 → 1500) и после прокрутки к низу браузер ограничит scrollTop, если это переполнение пропадёт
+if (q.has("ghost")) {
+  document.body.style.minHeight = "1000px";
+  const g = document.createElement("ytd-continuation-item-renderer");
+  g.id = "ghost";
+  g.setAttribute("style", "position:absolute;width:100px;height:60px;top:940px;transform:translateY(500px)");
+  document.body.append(g);
+  setTimeout(() => rawScrollTo({ top: num("ghost", 700), left: 0, behavior: "instant" }), 400);
+}
+// late=<мс> — continuation появляется в DOM не сразу (на живом YouTube первый проход контроллера идёт без него)
+if (q.has("late")) { cont.remove(); setTimeout(() => document.getElementById("contents").append(cont), num("late", 0)); }
 </script>
 </body></html>

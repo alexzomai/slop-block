@@ -1,7 +1,7 @@
 import { ENDPOINT } from "./jev";
 import { LimiterFullError } from "./limiter";
 
-export type CallError = "no_key" | "rate_limited" | "network" | "bad_response";
+export type CallError = "no_key" | "key_rejected" | "rate_limited" | "network" | "bad_response";
 export type CallResult = { ok: true; json: unknown } | { ok: false; error: CallError };
 
 export interface CallOptions {
@@ -54,7 +54,7 @@ async function attempt(o: CallOptions): Promise<Attempt> {
       const status = res.status;
       if (!(status >= 200 && status < 300)) {
         void res.body?.cancel().catch(() => undefined);
-        if (status === 401) return { kind: "final", error: "no_key" };
+        if (status === 401 || status === 403) return { kind: "final", error: "key_rejected" };
         if (status === 429 || status >= 500) {
           const ra = Number(res.headers.get("retry-after"));
           const retryAfter = Number.isFinite(ra) && ra > 0 ? Math.min(ra * 1000, MAX_RETRY_AFTER) : undefined;

@@ -31,3 +31,10 @@ html[data-slop-gate="allowlist"] :is(ytd-rich-item-renderer, ytd-video-renderer,
   overflow-wrap: anywhere;
 }
 #slop-feed-status[hidden] { display: none; }
+
+/* Удержание continuation (автодогрузка allowlist): смещение вверх не меняет геометрию документа, но уводит
+   continuation из зоны IntersectionObserver YouTube, чтобы порции не грузились цепочкой без контроллера.
+   Действует только при шлюзе: failOpen снимает шлюз, а с ним и удержание. */
+html[data-slop-gate="allowlist"][data-slop-hold] ytd-continuation-item-renderer {
+  transform: translateY(-100000px) !important;
+}

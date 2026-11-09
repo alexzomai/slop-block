@@ -53,14 +53,25 @@ describe("Autofill: условие подгрузки", () => {
     s.a.evaluate();
     expect(s.log.triggers).toBe(1);
   });
-  it("нет continuation → стоп, индикатор скрыт, навсегда до сброса", () => {
+  it("нет continuation → подгрузки нет, индикатор скрыт; появился — работаем (не липкий «конец»)", () => {
     const s = setup({ hasContinuation: false, visible: 3, cards: 10 });
     s.a.evaluate();
     expect(s.log.triggers).toBe(0);
     expect(s.last()).toBe("off");
     s.set({ hasContinuation: true });
     s.a.evaluate();
-    expect(s.log.triggers).toBe(0);
+    expect(s.log.triggers).toBe(1);
+  });
+  it("первый проход до отрисовки continuation (карточек 0) не останавливает автодогрузку на весь заход", () => {
+    const s = setup({ hasContinuation: false, cards: 0 });
+    s.a.evaluate();
+    s.a.evaluate();
+    s.set({ hasContinuation: true, cards: 6, pending: 6 });
+    s.a.evaluate();
+    s.set({ pending: 0 });
+    s.a.evaluate();
+    expect(s.log.triggers).toBe(1);
+    expect(s.last()).toBe("searching");
   });
   it("не eligible → ничего", () => {
     const s = setup({ eligible: false });
