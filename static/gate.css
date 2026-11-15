@@ -17,20 +17,176 @@ html[data-slop-gate="allowlist"] :is(ytd-rich-item-renderer, ytd-video-renderer,
   .slop-reveal[data-slop-show] { animation: none; }
 }
 
-/* Индикатор автодогрузки ленты (создаётся content script перед continuation). Не карточка, сетку не ломает. */
+/* Индикатор автодогрузки ленты (создаётся content script перед continuation). Не карточка, сетку не ломает.
+   Внешний #slop-feed-status — контейнер (container-type): раскладка карточки зависит от ШИРИНЫ САМОГО БЛОКА, а не окна
+   (у YouTube слева меню, лента уже окна). Высота карточки не зависит от переноса текста: на любой ширине зарезервированы
+   строки заголовка и пояснения и строка кнопки, поэтому смена состояния не сдвигает раскладку.
+   Палитра Ink & Moss; тёмная тема — по html[dark] YouTube. */
 #slop-feed-status {
+  --fs-ink: #17211c;
+  --fs-ink-2: #4a594f;
+  --fs-surface: #fffdf7;
+  --fs-line: #d9d4c4;
+  --fs-track: #ebe7da;
+  --fs-accent: #0d7556;
+  --fs-accent-hover: #0a6247;
+  --fs-on-accent: #ffffff;
+  --fs-danger: #b3261e;
+  --fs-warn: #7a4e00;
+  --fs-edge: var(--fs-line);
   box-sizing: border-box;
   grid-column: 1 / -1;
   flex: 0 0 100%;
+  justify-self: center;
   width: 100%;
   max-width: 100%;
-  padding: 16px;
-  text-align: center;
-  font: 400 14px/20px Roboto, Arial, sans-serif;
-  color: var(--yt-spec-text-secondary, #606060);
+  margin: 16px 0;
+  container-type: inline-size;
+  color: var(--fs-ink);
+  font: 400 13px/1.5 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
+html[dark] #slop-feed-status {
+  --fs-ink: #e7eee9;
+  --fs-ink-2: #a2b4a9;
+  --fs-surface: #151d19;
+  --fs-line: #26342d;
+  --fs-track: #1e2a24;
+  --fs-accent: #5fd9a6;
+  --fs-accent-hover: #7ae6b8;
+  --fs-on-accent: #06150e;
+  --fs-danger: #ff9a90;
+  --fs-warn: #f0c35c;
+}
 #slop-feed-status[hidden] { display: none; }
+#slop-feed-status[data-state="searching"],
+#slop-feed-status[data-state="done"] { --fs-edge: var(--fs-accent); }
+#slop-feed-status[data-state="exhausted"],
+#slop-feed-status[data-state="unsafe"] { --fs-edge: var(--fs-warn); }
+#slop-feed-status[data-state="error"] { --fs-edge: var(--fs-danger); }
+
+#slop-feed-status .slop-fs-card {
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 84px;
+  padding: 14px 16px;
+  border: 1px solid var(--fs-line);
+  border-left: 4px solid var(--fs-edge);
+  border-radius: 10px;
+  background: var(--fs-surface);
+}
+
+#slop-feed-status .slop-fs-icon {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 26px;
+  height: 26px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 700 14px/1 ui-monospace, Menlo, Consolas, monospace;
+  color: var(--fs-ink-2);
+}
+#slop-feed-status[data-state="searching"] .slop-fs-icon {
+  color: var(--fs-accent);
+  border-color: var(--fs-track);
+  border-top-color: var(--fs-accent);
+  animation: slop-fs-spin 0.9s linear infinite;
+}
+#slop-feed-status[data-state="done"] .slop-fs-icon { color: var(--fs-accent); }
+#slop-feed-status[data-state="done"] .slop-fs-icon::before { content: "\2713"; }
+#slop-feed-status[data-state="exhausted"] .slop-fs-icon,
+#slop-feed-status[data-state="unsafe"] .slop-fs-icon { color: var(--fs-warn); }
+#slop-feed-status[data-state="exhausted"] .slop-fs-icon::before { content: "II"; font-size: 11px; letter-spacing: -1px; }
+#slop-feed-status[data-state="unsafe"] .slop-fs-icon::before { content: "\2193"; }
+#slop-feed-status[data-state="end"] .slop-fs-icon::before { content: "\2013"; }
+#slop-feed-status[data-state="error"] .slop-fs-icon { color: var(--fs-danger); }
+#slop-feed-status[data-state="error"] .slop-fs-icon::before { content: "!"; }
+
+#slop-feed-status .slop-fs-body { flex: 1 1 auto; min-width: 0; }
+#slop-feed-status .slop-fs-title { font-weight: 600; font-size: 14px; line-height: 20px; color: var(--fs-ink); }
+#slop-feed-status .slop-fs-detail { margin-top: 2px; font-size: 12px; line-height: 18px; color: var(--fs-ink-2); }
+/* Пустое пояснение занимает место: высота блока не меняется при смене состояния (раскладка не прыгает). */
+#slop-feed-status .slop-fs-detail { min-height: 18px; }
+
+/* Полоска прогресса по нижней кромке блока: заполнение = найдено / цель; бегущий блик — признак активности.
+   Места в раскладке не занимает, поэтому появление и исчезновение полоски высоту блока не меняют. */
+#slop-feed-status .slop-fs-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: var(--fs-track);
+  overflow: hidden;
+}
+#slop-feed-status .slop-fs-bar[hidden] { display: none; }
+#slop-feed-status .slop-fs-fill {
+  display: block;
+  height: 100%;
+  width: var(--slop-p, 0%);
+  min-width: 4px;
+  background: var(--fs-accent);
+  transition: width 300ms ease-out;
+}
+#slop-feed-status .slop-fs-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  background: linear-gradient(90deg, transparent, var(--fs-accent), transparent);
+  opacity: 0.55;
+  animation: slop-fs-slide 1.4s ease-in-out infinite;
+}
+
+#slop-feed-status .slop-fs-actions { flex: 0 0 auto; display: flex; }
+#slop-feed-status .slop-fs-btn {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--fs-accent);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fs-accent);
+  font: 600 13px/20px ui-monospace, Menlo, Consolas, monospace;
+  white-space: nowrap;
+  cursor: pointer;
+}
+#slop-feed-status .slop-fs-btn[hidden] { display: none; }
+#slop-feed-status .slop-fs-primary { background: var(--fs-accent); color: var(--fs-on-accent); }
+#slop-feed-status .slop-fs-primary:hover { background: var(--fs-accent-hover); border-color: var(--fs-accent-hover); }
+#slop-feed-status .slop-fs-btn:focus-visible { outline: 2px solid var(--fs-accent); outline-offset: 2px; }
+
+@keyframes slop-fs-spin { to { transform: rotate(360deg); } }
+@keyframes slop-fs-slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  #slop-feed-status[data-state] .slop-fs-icon,
+  #slop-feed-status .slop-fs-bar::after { animation: none; }
+  #slop-feed-status .slop-fs-bar::after { display: none; }
+  #slop-feed-status .slop-fs-fill { transition: none; }
+}
+
+/* Узкий блок (< 860 px по ширине самого блока): текст и кнопка в разных строках; резерв под самые длинные состояния. */
+@container (max-width: 859px) {
+  #slop-feed-status .slop-fs-card { flex-wrap: wrap; }
+  #slop-feed-status .slop-fs-title { min-height: 40px; }
+  #slop-feed-status .slop-fs-detail { min-height: 36px; }
+  #slop-feed-status .slop-fs-body { flex: 1 1 calc(100% - 44px); }
+  #slop-feed-status .slop-fs-actions { flex: 1 1 100%; min-height: 44px; }
+  #slop-feed-status .slop-fs-btn { flex: 1 1 auto; }
+}
+/* Совсем узкий (< 480 px): заголовок до трёх строк. */
+@container (max-width: 479px) {
+  #slop-feed-status .slop-fs-title { min-height: 60px; }
+}
 
 /* Удержание continuation (автодогрузка allowlist): смещение вверх не меняет геометрию документа, но уводит
    continuation из зоны IntersectionObserver YouTube, чтобы порции не грузились цепочкой без контроллера.

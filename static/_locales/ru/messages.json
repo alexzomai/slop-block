@@ -9,6 +9,8 @@
   "popup_mode_blocklist": { "message": "Скрывать подходящие" },
   "popup_skip_subs": { "message": "Не фильтровать подписки" },
   "popup_filter_search": { "message": "Фильтровать результаты поиска" },
+  "popup_compat_ubol": { "message": "Совместимость с uBlock Origin Lite" },
+  "popup_compat_ubol_hint": { "message": "Не учитывать карточки, спрятанные блокировщиком рекламы: не считаются, в режиме «Скрывать» не оцениваются." },
   "popup_key_hint": { "message": "Нет ключа OpenRouter — фильтр не активен, всё показывается." },
   "popup_key_hint_typesafe": { "message": "Нет ключа TypeSafe — фильтр не активен, всё показывается." },
   "popup_settings_link": { "message": "Настройки" },
@@ -96,8 +98,49 @@
   "msg_key_removed": { "message": "Ключ удалён." },
   "msg_settings_saved": { "message": "Настройки сохранены." },
 
-  "autofill_searching": { "message": "Ищу ещё подходящие видео…" },
-  "autofill_exhausted": { "message": "Больше подходящих не нашлось — прокрутите или измените теги" },
+  "autofill_searching": { "message": "Ищу подходящие видео…" },
+  "autofill_progress": {
+    "message": "Найдено $FOUND$ из $TARGET$ · проверено $CHECKED$ видео",
+    "placeholders": { "found": { "content": "$1" }, "target": { "content": "$2" }, "checked": { "content": "$3" } }
+  },
+  "autofill_done": {
+    "message": "Готово. Подходящих видео: $FOUND$",
+    "placeholders": { "found": { "content": "$1" } }
+  },
+  "autofill_done_hint": { "message": "Прокрутите вниз — подберу ещё" },
+  "autofill_stop_empty": {
+    "message": "Поиск остановлен — в последних $CHECKED$ видео ничего подходящего",
+    "placeholders": { "checked": { "content": "$1" } }
+  },
+  "autofill_stop_nofeed": { "message": "Поиск остановлен — YouTube не отдаёт новые видео" },
+  "autofill_stop_total": {
+    "message": "Поиск остановлен — проверено $CHECKED$ видео, найдено $FOUND$ из $TARGET$",
+    "placeholders": { "checked": { "content": "$1" }, "found": { "content": "$2" }, "target": { "content": "$3" } }
+  },
+  "autofill_stop_stall": { "message": "Поиск остановлен — проверка видео не отвечает" },
+  "autofill_stop_hint": { "message": "Нажмите кнопку, чтобы искать дальше, или измените теги" },
+  "autofill_more": { "message": "Искать дальше" },
+  "autofill_end": { "message": "Больше видео нет" },
+  "autofill_end_detail": {
+    "message": "Найдено: $FOUND$ · проверено: $CHECKED$",
+    "placeholders": { "found": { "content": "$1" }, "checked": { "content": "$2" } }
+  },
+  "autofill_error": {
+    "message": "Фильтр не работает: $REASON$",
+    "placeholders": { "reason": { "content": "$1" } }
+  },
+  "autofill_error_no_key": { "message": "нет ключа или ключ отклонён" },
+  "autofill_error_rate_limited": { "message": "превышен лимит запросов" },
+  "autofill_error_network": { "message": "нет связи с провайдером" },
+  "autofill_error_bad_response": { "message": "провайдер вернул непонятный ответ" },
+  "autofill_error_no_credits": { "message": "у провайдера нет кредитов — пополните баланс" },
+  "autofill_error_access_denied": { "message": "провайдер закрыл доступ из вашей сети или региона — включите VPN" },
+  "provider_no_credits": { "message": "Нет кредитов у провайдера OpenRouter — пополните баланс." },
+  "provider_no_credits_typesafe": { "message": "Нет кредитов у провайдера TypeSafe — пополните баланс." },
+  "provider_access_denied": { "message": "Провайдер закрыл доступ из вашей сети или региона — включите VPN." },
+  "autofill_error_hint": { "message": "Лента показана без фильтрации" },
+  "autofill_error_hint_retry": { "message": "Повторяю в фоне; видео появятся после проверки" },
+  "autofill_settings": { "message": "Настройки" },
   "autofill_unsafe": { "message": "Прокрутите вниз, чтобы загрузить ещё" },
   "popup_feed_target": { "message": "Сколько видео держать на экране (6–30)" },
   "err_bad_target": {

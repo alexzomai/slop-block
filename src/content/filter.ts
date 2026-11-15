@@ -4,6 +4,10 @@ import { effectiveState, type Mode, type Settings } from "../shared/settings";
 export interface FilterDeps<C> {
   findCards(): C[];
   extract(card: C): VideoMeta | null;
+  /** Рекламный слот: не оценивается, не считается ни в «видимые», ни в «проверено», платных запросов не вызывает. Нет метода — рекламы нет. */
+  isAd?(card: C): boolean;
+  /** Область сравнения дублей (страница SPA); нет метода или null — одна общая область. Исключение = общая область (fail-open). */
+  scope?(card: C): unknown;
   /** blocklist: обратимо скрыть / вернуть карточку. */
   hide(card: C): void;
   show(card: C): void;
@@ -15,6 +19,12 @@ export interface FilterDeps<C> {
   send(req: DecideRequest): Promise<DecideResponse>;
   /** Пакетная проверка кэша решений (без платных вызовов). Нет метода — все карточки идут в send. */
   peek?(req: PeekRequest): Promise<PeekResponse>;
+  /**
+   * Карточка реально отображается (не спрятана чужим CSS/расширением, например uBlock Origin Lite). Используется только в режиме
+   * совместимости (settings.compatUbol): спрятанные чужим карточки не считаются, а в blocklist ещё и не оцениваются (не тратят платный вызов).
+   * Нет метода — режим совместимости ничего не меняет.
+   */
+  rendered?(card: C): boolean;
   /** После каждого прохода scan() (для автодогрузки ленты). Исключения глушатся. */
   onSettled?(): void;
   /** Актуальный контекст страницы (по location). Если задан, проверяется перед каждой отправкой и применением ответа. */
@@ -24,6 +34,9 @@ export interface FilterDeps<C> {
 export interface Context { onSubscriptions: boolean; onSearch?: boolean }
 
 export const DEBOUNCE_MS = 300;
+/** Режим совместимости: повторная проверка карточек, спрятанных чужим CSS и ещё не оценённых (blocklist); не более MAX_RECHECKS подряд. */
+export const RECHECK_MS = 3000;
+export const MAX_RECHECKS = 10;
 /** Платных запросов в полёте; строго меньше maxConcurrent лимитера background (6) — слот остаётся запросам ключа/трат. */
 export const MAX_PARALLEL = 5;
 /** Дедлайн пакетной проверки кэша; просрочка = сбой peek (все карточки идут в send). */
@@ -45,6 +58,8 @@ export class FeedFilter<C> {
   private mode: Mode = "allowlist";
   private active = false;
   private keyMissing = false;
+  /** Последний сбой провайдера (только для индикатора): считается ошибкой фильтра, пока на странице нет ни одного решения. */
+  private providerError: "rate_limited" | "network" | "bad_response" | "no_credits" | "access_denied" | null = null;
   private lastSettings = "";
   private ctx: Context = { onSubscriptions: false };
   private settings: Settings | undefined;
@@ -62,10 +77,14 @@ export class FeedFilter<C> {
   private shown = new Set<C>(); // allowlist
   private gate: boolean | undefined;
   private cardCount = 0;
+  /** Видимые (allowlist) карточки, подключённые к DOM сейчас, по уникальным videoId (клоны/перерисовка не считаются ростом). */
+  private visibleCount = 0;
   private waiting = 0; // карточки без решения, которые ещё будут оценены (не терминальные, не ждущие повтора)
   private running = 0;
   private generation = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
+  private recheckTimer: ReturnType<typeof setTimeout> | undefined;
+  private rechecks = 0;
 
   constructor(private deps: FilterDeps<C>, settings: Settings, ctx: Context = { onSubscriptions: false }) {
     this.settings = settings;
@@ -90,6 +109,7 @@ export class FeedFilter<C> {
   /** Единая точка входа для смены настроек / страницы. Состояние применяется сразу, без таймеров и запросов. */
   reconfigure(settings: Settings, ctx: Context): void {
     this.settings = settings;
+    this.rechecks = 0;
     this.configure(settings, ctx);
     this.resetVisuals();
     if (!this.active) {
@@ -116,7 +136,10 @@ export class FeedFilter<C> {
   private configure(settings: Settings, ctx: Context): boolean {
     this.ctx = ctx;
     const snapshot = JSON.stringify(settings);
-    if (snapshot !== this.lastSettings) this.keyMissing = false; // смена настроек снимает «нет ключа»
+    if (snapshot !== this.lastSettings) {
+      this.keyMissing = false; // смена настроек снимает «нет ключа»
+      this.providerError = null;
+    }
     this.lastSettings = snapshot;
     const wanted = effectiveState(settings, { ...ctx, keyMissing: false });
     const tagsChanged = JSON.stringify(wanted.tags) !== JSON.stringify(this.tags);
@@ -132,6 +155,7 @@ export class FeedFilter<C> {
       this.ordered = [];
       this.fails.clear();
       this.terminal.clear();
+      this.providerError = null;
     }
     return tagsChanged;
   }
@@ -148,6 +172,7 @@ export class FeedFilter<C> {
     this.hidden.clear();
     for (const c of this.shown) this.deps.disallow?.(c);
     this.shown.clear();
+    this.visibleCount = 0;
   }
 
   /** Видимость по режиму: blocklist — не скрыта, пока нет hide:true; allowlist — скрыта, пока нет разрешения или fail-open. */
@@ -176,8 +201,9 @@ export class FeedFilter<C> {
   }
 
   /** Сводка для автодогрузки: видимые (allowlist), найденные карточки, необработанные (очередь + полёт). */
-  snapshot(): { active: boolean; mode: Mode; visible: number; cards: number; pending: number } {
-    return { active: this.active, mode: this.mode, visible: this.shown.size, cards: this.cardCount, pending: Math.max(this.waiting, this.queued.size) };
+  snapshot(): { active: boolean; mode: Mode; visible: number; cards: number; pending: number; failure: "no_key" | "rate_limited" | "network" | "bad_response" | "no_credits" | "access_denied" | null } {
+    const failure = this.keyMissing ? "no_key" : this.decisions.size === 0 ? this.providerError : null;
+    return { active: this.active, mode: this.mode, visible: this.visibleCount, cards: this.cardCount, pending: Math.max(this.waiting, this.queued.size), failure };
   }
 
   scan(enqueue = true): void {
@@ -204,16 +230,63 @@ export class FeedFilter<C> {
     this.setGate(this.mode === "allowlist");
     const now = Date.now();
     const found = this.deps.findCards();
-    this.cardCount = found.length;
+    // Карточки, удалённые страницей (перерисовка/клоны), в наборах не копим: иначе «видимые» растут от замены тех же видео.
+    const live = new Set<C>(found);
+    // Выбывший из учёта узел возвращаем в исходный вид (снимаем наши атрибуты/скрытие и отменяем отложенное применение):
+    // YouTube может вставить тот же узел снова уже с другим видео, и оценка начнётся с чистого листа.
+    for (const c of [...this.shown]) {
+      if (live.has(c)) continue;
+      this.shown.delete(c);
+      this.deps.disallow?.(c);
+    }
+    for (const c of [...this.hidden]) {
+      if (live.has(c)) continue;
+      this.hidden.delete(c);
+      this.deps.show(c);
+    }
+    const compat = this.settings?.compatUbol === true && this.deps.rendered !== undefined;
+    let ads = 0; // рекламные слоты: отсекаются ДО extract/rendered (ни peek, ни send, ни повторной проверки compatUbol)
+    let skipped = 0; // спрятаны чужим CSS: не считаются «проверенными» и не ждут решения
+    let skippedMeta = 0; // из них с id и без решения (blocklist): оценка отложена до появления на экране
+    const visibleKeys = new Set<unknown>();
+    let dupes = 0; // повторные карточки того же videoId на странице: прячем, не оцениваем, не считаем
+    const seen = new Map<unknown, Set<string>>(); // область (страница SPA) → videoId, уже занятые первой карточкой
     const undecided = new Set<string>();
     const fresh: VideoMeta[] = []; // новые в порядке страницы: сначала проверка кэша, потом очередь
     for (const card of found) {
+      if (this.isAd(card)) {
+        // allowlist: реклама — неподходящая карточка (шлюз скрывает, проявленную возвращаем под шлюз); blocklist: не трогаем.
+        ads++;
+        this.place(card, this.mode !== "allowlist");
+        continue;
+      }
       const meta = this.deps.extract(card);
       if (!meta) {
         this.place(card, true); // карточка без id (реклама, плейсхолдер) не оценивается и не должна пропадать
+        if (this.shown.has(card)) {
+          if (compat && !this.deps.rendered!(card)) skipped++;
+          else visibleKeys.add(card);
+        }
         continue;
       }
+      // blocklist: карточку без решения, спрятанную чужим CSS (шлюза здесь нет, значит скрыла не мы), не оцениваем и не считаем.
+      // allowlist такую проверку не допускает: невыявленные карточки скрыты нашим шлюзом, причину скрытия не отличить.
+      if (compat && this.mode === "blocklist" && !this.decisions.has(meta.videoId) && !this.terminal.has(meta.videoId) && !this.deps.rendered!(card)) {
+        skipped++;
+        skippedMeta++;
+        continue;
+      }
+      const area = this.scopeOf(card);
+      let ids = seen.get(area);
+      if (!ids) seen.set(area, (ids = new Set()));
+      if (ids.has(meta.videoId)) {
+        dupes++;
+        this.place(card, false); // allowlist: под шлюз; blocklist: обратимое скрытие
+        continue;
+      }
+      ids.add(meta.videoId);
       this.place(card, this.visible(meta.videoId), this.instant.has(meta.videoId));
+      if (this.shown.has(card)) visibleKeys.add(meta.videoId);
       if (this.shown.has(card)) this.instant.delete(meta.videoId);
       if (!this.decisions.has(meta.videoId) && !this.terminal.has(meta.videoId)) {
         const f0 = this.fails.get(meta.videoId);
@@ -226,9 +299,42 @@ export class FeedFilter<C> {
       this.queued.add(meta.videoId);
       fresh.push(meta);
     }
+    this.visibleCount = visibleKeys.size;
+    this.cardCount = found.length - ads - skipped - dupes; // реклама, дубли и спрятанные чужим CSS не считаются проверенными
+    this.armRecheck(skippedMeta);
     this.waiting = undecided.size;
     if (fresh.length > 0) this.enqueue(fresh);
     this.pump();
+  }
+
+  private scopeOf(card: C): unknown {
+    try {
+      return this.deps.scope?.(card) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private isAd(card: C): boolean {
+    try {
+      return this.deps.isAd?.(card) === true;
+    } catch {
+      return false; // сомнение — обычная карточка (fail-open)
+    }
+  }
+
+  /** Повторный проход, пока есть отложенные спрятанные карточки: чужое скрытие может сняться без изменения DOM (наши наблюдатели его не видят). */
+  private armRecheck(skippedMeta: number): void {
+    if (skippedMeta === 0) {
+      this.rechecks = 0;
+      return;
+    }
+    if (this.recheckTimer !== undefined || this.rechecks >= MAX_RECHECKS) return;
+    this.rechecks++;
+    this.recheckTimer = setTimeout(() => {
+      this.recheckTimer = undefined;
+      this.schedule();
+    }, RECHECK_MS);
   }
 
   /** Новые видео: через пакетную проверку кэша, если она доступна; иначе сразу в очередь платных запросов. */
@@ -338,14 +444,20 @@ export class FeedFilter<C> {
     if (gen === this.generation) {
       this.queued.delete(meta.videoId);
       if (res === "threw") {
+        this.providerError = "network";
         this.retryLater(meta.videoId, gen);
       } else if (this.applyDecision(meta.videoId, res)) {
         // решение применено
       } else if (isRecord(res) && res.ok === false && res.error === "no_key") {
         this.noKey();
       } else if (isRecord(res) && res.ok === false && (res.error === "network" || res.error === "rate_limited")) {
+        this.providerError = res.error;
         this.retryLater(meta.videoId, gen);
+      } else if (isRecord(res) && res.ok === false && (res.error === "no_credits" || res.error === "access_denied")) {
+        this.providerError = res.error;
+        this.terminal.add(meta.videoId); // без повторов (платный запрос в паузе): fail-open, карточка показывается
       } else {
+        this.providerError = "bad_response";
         this.terminal.add(meta.videoId); // bad_response и неразборчивый ответ
       }
       this.scan();

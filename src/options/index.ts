@@ -2,6 +2,7 @@ import type { ProviderId } from "../background/providers";
 import { applyI18n, domRoot, t } from "../shared/i18n";
 import { loadView, onRemoveKey, onSaveKey, onSaveSettings } from "./controller";
 import type { Result } from "./controller";
+import { loadProviderNotice, showProviderNotice } from "../shared/provider-notice";
 
 const kv = chrome.storage.local;
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -49,3 +50,4 @@ $("save-settings").addEventListener("click", async () => {
 });
 
 void render();
+void loadProviderNotice().then((n) => showProviderNotice($("provider-notice"), n));

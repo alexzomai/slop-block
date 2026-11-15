@@ -1,3 +1,4 @@
+import { OPEN_OPTIONS_TYPE, PROVIDER_STATUS_TYPE } from "../shared/ui-messages";
 import type { UsageResponse } from "../shared/usage";
 import { emptyStats } from "./stats";
 
@@ -9,7 +10,7 @@ interface OnMessage {
 export function registerListener(
   onMessage: OnMessage,
   ownId: string,
-  h: { decide(msg: unknown): Promise<unknown>; peek?(msg: unknown): Promise<unknown>; usage(): Promise<UsageResponse> },
+  h: { decide(msg: unknown): Promise<unknown>; peek?(msg: unknown): Promise<unknown>; usage(): Promise<UsageResponse>; openOptions?(): void; providerStatus?(): Promise<unknown> },
 ): void {
   onMessage.addListener((msg, sender, sendResponse) => {
     if (sender.id !== ownId) return false;
@@ -20,6 +21,19 @@ export function registerListener(
     }
     if (type === "slop/peek" && h.peek) {
       h.peek(msg).then(sendResponse, () => sendResponse({ ok: false, error: "bad_response" }));
+      return true;
+    }
+    if (type === OPEN_OPTIONS_TYPE && h.openOptions) {
+      try {
+        h.openOptions();
+      } catch {
+        /* настройки не открылись: индикатор остаётся, ничего не ломается */
+      }
+      sendResponse({ ok: true });
+      return false;
+    }
+    if (type === PROVIDER_STATUS_TYPE && h.providerStatus) {
+      h.providerStatus().then(sendResponse, () => sendResponse({ ok: false }));
       return true;
     }
     if (type === "slop/usage") {

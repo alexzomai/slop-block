@@ -23,6 +23,35 @@ describe("gate.css", () => {
   });
 });
 
+describe("gate.css: индикатор ленты", () => {
+  it.each(["searching", "done", "exhausted", "end", "unsafe", "error"])("у состояния %s есть значок", (st) => {
+    expect(css).toContain(`#slop-feed-status[data-state="${st}"]`);
+  });
+  it("анимация только у «ищу» и отключается при prefers-reduced-motion", () => {
+    const anim = [...css.matchAll(/animation:\s*([a-z-]+)/g)].map((m) => m[1]);
+    expect(anim).toContain("slop-fs-spin");
+    expect(anim).toContain("slop-fs-slide");
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{[^@]*slop-fs-icon[^@]*animation:\s*none/);
+    // спиннер привязан к состоянию searching, а не к блоку целиком
+    expect(css).toMatch(/\[data-state="searching"\] \.slop-fs-icon\s*\{[^}]*animation:\s*slop-fs-spin/);
+  });
+  it("тёмная тема YouTube (html[dark]), фокус кнопки, узкий экран, фиксированная минимальная высота", () => {
+    expect(css).toMatch(/html\[dark\] #slop-feed-status/);
+    expect(css).toMatch(/\.slop-fs-btn:focus-visible/);
+    expect(css).toMatch(/@container \(max-width: 859px\)/);
+    expect(css).toMatch(/#slop-feed-status\s*\{[^}]*container-type:\s*inline-size/);
+    expect(css).toMatch(/\.slop-fs-card\s*\{[^}]*min-height:\s*84px/);
+  });
+  it("раскладка не прыгает: полоска не занимает места, на узком экране резерв под строку кнопок и текст", () => {
+    expect(css).toMatch(/\.slop-fs-bar\s*\{[^}]*position:\s*absolute/);
+    expect(css).not.toMatch(/\.slop-fs-bar\[hidden\]\s*\{[^}]*visibility/);
+    const narrow = css.slice(css.indexOf("@container (max-width: 859px)"));
+    expect(narrow).toMatch(/\.slop-fs-actions\s*\{[^}]*min-height:\s*44px/);
+    expect(narrow).toMatch(/\.slop-fs-title\s*\{[^}]*min-height:\s*40px/);
+    expect(narrow).toMatch(/\.slop-fs-detail\s*\{[^}]*min-height:\s*36px/);
+  });
+});
+
 describe("manifest", () => {
   const m = JSON.parse(readFileSync("static/manifest.json", "utf8"));
   it("content script на document_start с gate.css", () => {

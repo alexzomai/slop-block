@@ -1,7 +1,7 @@
 import { ENDPOINT } from "./jev";
 import { LimiterFullError } from "./limiter";
 
-export type CallError = "no_key" | "key_rejected" | "rate_limited" | "network" | "bad_response";
+export type CallError = "no_key" | "key_rejected" | "rate_limited" | "network" | "bad_response" | "no_credits" | "access_denied";
 export type CallResult = { ok: true; json: unknown } | { ok: false; error: CallError };
 
 export interface CallOptions {
@@ -23,6 +23,44 @@ export interface CallOptions {
 
 const BASE_DELAY = 500;
 const MAX_RETRY_AFTER = 10_000;
+/** Предел чтения тела 403 (байты): тело нужно только для классификации и нигде не сохраняется. */
+export const MAX_ERROR_BODY = 4096;
+
+/** Явный признак проблемы ключа в теле 403 (гео/политика доступа таких слов не содержит). */
+// Только явные формулировки про ключ или учётные данные; общее «unauthorized» не признак (бывает «Unauthorized region»).
+const KEY_PROBLEM = /\binvalid[\s_-]*(api[\s_-]*)?key\b|\bapi[\s_-]*key\b[^.]{0,40}\b(invalid|revoked|disabled|expired|incorrect)\b|\bkey\b[^.]{0,20}\b(invalid|revoked|disabled|expired)\b|\b(bad|invalid|incorrect)[\s_-]+(api[\s_-]+)?credentials\b/i;
+
+/** 403: key_rejected только при явном признаке ключа, иначе access_denied (безопасный выбор, см. design). Тело не возвращается. */
+export function classify403(body: string): "key_rejected" | "access_denied" {
+  return KEY_PROBLEM.test(body) ? "key_rejected" : "access_denied";
+}
+
+/** Читает не более MAX_ERROR_BODY байт; остаток отбрасывается. Ошибки чтения → пустая строка (access_denied). */
+async function readCapped(res: Response, aborted: Promise<never>): Promise<string> {
+  try {
+    const reader = res.body?.getReader();
+    if (!reader) return "";
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    while (total < MAX_ERROR_BODY) {
+      const part = await Promise.race([reader.read(), aborted]);
+      if (part.done) break;
+      const take = part.value.subarray(0, MAX_ERROR_BODY - total); // в память — только остаток до лимита
+      chunks.push(take);
+      total += take.length;
+    }
+    void reader.cancel().catch(() => undefined); // лимит достигнут (или конец): остальное не читаем
+    const all = new Uint8Array(total);
+    let off = 0;
+    for (const c of chunks) {
+      all.set(c, off);
+      off += c.length;
+    }
+    return new TextDecoder().decode(all);
+  } catch {
+    return "";
+  }
+}
 
 type Attempt =
   | { kind: "ok"; json: unknown }
@@ -53,8 +91,10 @@ async function attempt(o: CallOptions): Promise<Attempt> {
       ]);
       const status = res.status;
       if (!(status >= 200 && status < 300)) {
+        if (status === 403) return { kind: "final", error: classify403(await readCapped(res, aborted)) };
         void res.body?.cancel().catch(() => undefined);
-        if (status === 401 || status === 403) return { kind: "final", error: "key_rejected" };
+        if (status === 401) return { kind: "final", error: "key_rejected" };
+        if (status === 402) return { kind: "final", error: "no_credits" };
         if (status === 429 || status >= 500) {
           const ra = Number(res.headers.get("retry-after"));
           const retryAfter = Number.isFinite(ra) && ra > 0 ? Math.min(ra * 1000, MAX_RETRY_AFTER) : undefined;

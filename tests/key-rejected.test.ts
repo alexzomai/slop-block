@@ -24,8 +24,8 @@ function setup(kvInit: Record<string, unknown>, f: any) {
 }
 
 describe("B2: отклонённый ключ", () => {
-  it.each([401, 403])("HTTP %i: no_key, дальше 0 fetch для decide и peek", async (s) => {
-    const f = vi.fn(async () => resp(s, { error: SECRET }));
+  it.each([401, 403])("HTTP %i (403: Invalid API key): no_key, дальше 0 fetch для decide и peek", async (s) => {
+    const f = vi.fn(async () => resp(s, { error: { message: "Invalid API key" } }));
     const { decide } = setup({ openrouterKey: SECRET }, f);
     expect(await decide(req("v1"))).toEqual({ ok: false, error: "no_key" });
     expect(f).toHaveBeenCalledTimes(1);
@@ -33,7 +33,7 @@ describe("B2: отклонённый ключ", () => {
     expect(await decide.peek(peekReq())).toEqual({ ok: false, error: "no_key" });
     expect(f).toHaveBeenCalledTimes(1);
   });
-  it.each([429, 503, 400, 402])("HTTP %i не помечает ключ", async (s) => {
+  it.each([429, 503, 400])("HTTP %i не помечает ключ", async (s) => {
     const f = vi.fn(async () => resp(s));
     const { decide, kv } = setup({ openrouterKey: SECRET }, f);
     await decide(req("a1"));

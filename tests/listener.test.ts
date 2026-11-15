@@ -39,3 +39,57 @@ describe("listener", () => {
     await vi.waitFor(() => expect(d.r).toHaveBeenCalledWith({ ok: false, error: "network" }));
   });
 });
+
+describe("слушатель: открыть настройки (slop/open-options)", () => {
+  const mk = (openOptions?: () => void) => {
+    let cb!: (m: unknown, s: { id?: string }, r: (x: unknown) => void) => boolean | void;
+    registerListener({ addListener: (f) => void (cb = f) }, "me", { decide: async () => ({}), usage: async () => ({ ok: true }) as never, openOptions });
+    return (id: string | undefined, msg: unknown) => {
+      const out: unknown[] = [];
+      const ret = cb(msg, { id }, (x) => out.push(x));
+      return { ret, out };
+    };
+  };
+  it("от своего расширения: вызывает openOptions и отвечает ok", () => {
+    let n = 0;
+    const send = mk(() => void n++);
+    const r = send("me", { type: "slop/open-options" });
+    expect(n).toBe(1);
+    expect(r.out).toEqual([{ ok: true }]);
+  });
+  it("чужой sender.id игнорируется", () => {
+    let n = 0;
+    const send = mk(() => void n++);
+    expect(send("evil", { type: "slop/open-options" }).out).toEqual([]);
+    expect(send(undefined, { type: "slop/open-options" }).out).toEqual([]);
+    expect(n).toBe(0);
+  });
+  it("исключение openOptions не ломает ответ", () => {
+    const send = mk(() => {
+      throw new Error("x");
+    });
+    expect(send("me", { type: "slop/open-options" }).out).toEqual([{ ok: true }]);
+  });
+});
+
+describe("listener: slop/provider-status", () => {
+  const mk = () => {
+    const providerStatus = vi.fn(async () => ({ ok: true, provider: "openrouter", state: "no_credits" }));
+    let cb!: (m: unknown, s: { id?: string }, r: (x: unknown) => void) => boolean | void;
+    registerListener({ addListener: (f) => { cb = f; } }, "me", { decide: vi.fn(async () => ({})), usage: vi.fn(async () => ({}) as never), providerStatus });
+    return { providerStatus, cb: (id?: string) => { const r = vi.fn(); const ret = cb({ type: "slop/provider-status" }, id ? { id } : {}, r); return { ret, r }; } };
+  };
+  it("от себя → ответ", async () => {
+    const { cb, providerStatus } = mk();
+    const { ret, r } = cb("me");
+    expect(ret).toBe(true);
+    await vi.waitFor(() => expect(r).toHaveBeenCalledWith({ ok: true, provider: "openrouter", state: "no_credits" }));
+    expect(providerStatus).toHaveBeenCalledOnce();
+  });
+  it("чужой id и без id игнорируются", () => {
+    const { cb, providerStatus } = mk();
+    expect(cb("evil").ret).toBe(false);
+    expect(cb().ret).toBe(false);
+    expect(providerStatus).not.toHaveBeenCalled();
+  });
+});

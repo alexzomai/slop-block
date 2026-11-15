@@ -40,12 +40,12 @@ describe("callJev", () => {
   it("persistent 429 -> rate_limited", async () => {
     expect(await callJev(base(vi.fn(async () => resp(429))))).toEqual({ ok: false, error: "rate_limited" });
   });
-  it.each([401, 403])("%i -> key_rejected, no retry", async (s) => {
-    const f = vi.fn(async () => resp(s));
+  it.each([401, 403])("%i -> key_rejected (403: тело указывает на ключ), no retry", async (s) => {
+    const f = vi.fn(async () => resp(s, { error: { message: "Invalid API key" } }));
     expect(await callJev(base(f))).toEqual({ ok: false, error: "key_rejected" });
     expect(f).toHaveBeenCalledTimes(1);
   });
-  it.each([400, 402, 404, 422])("%i -> bad_response, no retry", async (s) => {
+  it.each([400, 404, 422])("%i -> bad_response, no retry", async (s) => {
     const f = vi.fn(async () => resp(s));
     expect(await callJev(base(f))).toEqual({ ok: false, error: "bad_response" });
     expect(f).toHaveBeenCalledTimes(1);

@@ -29,10 +29,10 @@ describe("messages.json: паритет en/ru", () => {
   it("заложены ключи autofill для ветки feed-autofill", () => {
     for (const c of [en, ru]) {
       expect(c.autofill_searching).toBeDefined();
-      expect(c.autofill_exhausted).toBeDefined();
+      for (const k of ["autofill_progress", "autofill_done", "autofill_stop_empty", "autofill_stop_nofeed", "autofill_more", "autofill_end", "autofill_error", "autofill_settings"] as const) expect(c[k], k).toBeDefined();
     }
-    expect(ru.autofill_searching!.message).toBe("Ищу ещё подходящие видео…");
-    expect(ru.autofill_exhausted!.message).toBe("Больше подходящих не нашлось — прокрутите или измените теги");
+    expect(ru.autofill_searching!.message).toBe("Ищу подходящие видео…");
+    expect(ru.autofill_more!.message).toBe("Искать дальше");
     expect(ru.autofill_unsafe!.message).toBe("Прокрутите вниз, чтобы загрузить ещё");
     expect(en.popup_feed_target).toBeDefined();
   });

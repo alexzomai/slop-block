@@ -31,4 +31,4 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (KEY_STORAGE in changes || TS_KEY_STORAGE in changes || keyGenStorage("openrouter") in changes || keyGenStorage("typesafe") in changes || SETTINGS_STORAGE in changes) usage.invalidate();
 });
 
-registerListener(chrome.runtime.onMessage, chrome.runtime.id, { decide, peek: decide.peek, usage: () => usage.get() });
+registerListener(chrome.runtime.onMessage, chrome.runtime.id, { decide, peek: decide.peek, providerStatus: decide.providerStatus, usage: () => usage.get(), openOptions: () => void chrome.runtime.openOptionsPage() });

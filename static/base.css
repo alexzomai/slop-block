@@ -232,6 +232,7 @@ body:has(.popup) { padding: var(--sp-3); width: 360px; max-width: 100%; }
 .msg { margin: 0 0 var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); background: var(--danger-soft); color: var(--danger); font-size: var(--fs-sm); font-weight: 600; }
 .mode-title { margin: var(--sp-3) 0 var(--sp-2); font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-2); }
 .mode-title:empty { display: none; }
+.note { margin: calc(-1 * var(--sp-1)) 0 var(--sp-2); font-size: var(--fs-xs); line-height: 1.4; color: var(--text-2); }
 .tags { list-style: none; margin: 0 0 var(--sp-3); padding: 0; display: grid; gap: var(--sp-2); }
 .tags:empty { min-height: 48px; border: 1.5px dashed var(--border); border-radius: var(--r-md); }
 .tags li { display: flex; gap: var(--sp-2); align-items: center; min-height: 44px; padding: var(--sp-1); border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--surface); }

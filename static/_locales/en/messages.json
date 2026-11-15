@@ -9,6 +9,8 @@
   "popup_mode_blocklist": { "message": "Hide matching" },
   "popup_skip_subs": { "message": "Don't filter subscriptions" },
   "popup_filter_search": { "message": "Filter search results" },
+  "popup_compat_ubol": { "message": "Compatibility with uBlock Origin Lite" },
+  "popup_compat_ubol_hint": { "message": "Ignore cards hidden by an ad blocker: not counted, not evaluated in Hide mode." },
   "popup_key_hint": { "message": "No OpenRouter key — the filter is inactive, everything is shown." },
   "popup_key_hint_typesafe": { "message": "No TypeSafe key — the filter is inactive, everything is shown." },
   "popup_settings_link": { "message": "Settings" },
@@ -96,8 +98,49 @@
   "msg_key_removed": { "message": "Key removed." },
   "msg_settings_saved": { "message": "Settings saved." },
 
-  "autofill_searching": { "message": "Looking for more matching videos…" },
-  "autofill_exhausted": { "message": "No more matching videos found — scroll or change your tags" },
+  "autofill_searching": { "message": "Looking for matching videos…" },
+  "autofill_progress": {
+    "message": "Found $FOUND$ of $TARGET$ · $CHECKED$ checked",
+    "placeholders": { "found": { "content": "$1" }, "target": { "content": "$2" }, "checked": { "content": "$3" } }
+  },
+  "autofill_done": {
+    "message": "Done. Matching videos: $FOUND$",
+    "placeholders": { "found": { "content": "$1" } }
+  },
+  "autofill_done_hint": { "message": "Scroll down and I'll find more" },
+  "autofill_stop_empty": {
+    "message": "Search stopped — none of the last $CHECKED$ videos matched",
+    "placeholders": { "checked": { "content": "$1" } }
+  },
+  "autofill_stop_nofeed": { "message": "Search stopped — YouTube isn't returning new videos" },
+  "autofill_stop_total": {
+    "message": "Search stopped — checked $CHECKED$ videos, found $FOUND$ of $TARGET$",
+    "placeholders": { "checked": { "content": "$1" }, "found": { "content": "$2" }, "target": { "content": "$3" } }
+  },
+  "autofill_stop_stall": { "message": "Search stopped — checking videos isn't responding" },
+  "autofill_stop_hint": { "message": "Press the button to continue, or change your tags" },
+  "autofill_more": { "message": "Search more" },
+  "autofill_end": { "message": "No more videos" },
+  "autofill_end_detail": {
+    "message": "Found: $FOUND$ · checked: $CHECKED$",
+    "placeholders": { "found": { "content": "$1" }, "checked": { "content": "$2" } }
+  },
+  "autofill_error": {
+    "message": "Filter isn't working: $REASON$",
+    "placeholders": { "reason": { "content": "$1" } }
+  },
+  "autofill_error_no_key": { "message": "no API key, or the key was rejected" },
+  "autofill_error_rate_limited": { "message": "request limit reached" },
+  "autofill_error_network": { "message": "can't reach the provider" },
+  "autofill_error_bad_response": { "message": "unreadable provider response" },
+  "autofill_error_no_credits": { "message": "the provider account is out of credits" },
+  "autofill_error_access_denied": { "message": "the provider blocked access from your network or region — turn on a VPN" },
+  "provider_no_credits": { "message": "OpenRouter is out of credits — top up your balance." },
+  "provider_no_credits_typesafe": { "message": "TypeSafe is out of credits — top up your balance." },
+  "provider_access_denied": { "message": "The provider blocked access from your network or region — turn on a VPN." },
+  "autofill_error_hint": { "message": "Videos are shown unfiltered" },
+  "autofill_error_hint_retry": { "message": "Retrying in the background; videos appear once checked" },
+  "autofill_settings": { "message": "Settings" },
   "autofill_unsafe": { "message": "Scroll down to load more" },
   "popup_feed_target": { "message": "How many videos to keep on screen (6–30)" },
   "err_bad_target": {

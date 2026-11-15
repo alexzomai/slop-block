@@ -1,7 +1,8 @@
 // DOM-адаптер автодогрузки: единственное место, знающее про continuation YouTube, заполненность и индикатор.
 // Деградация безопасна: нет continuation — нет подгрузки; любая ошибка гасится контроллером.
 import { t, type MsgKey } from "../shared/i18n";
-import type { Indicator } from "./autofill";
+import type { Failure, Indicator, IndicatorInfo } from "./autofill";
+import { findCards } from "./selectors";
 
 /**
  * Запас за нижней границей окна. 0: пока низ последней видимой карточки не вышел за окно, continuation
@@ -12,15 +13,6 @@ export const CONTINUATION_SELECTOR = "ytd-continuation-item-renderer";
 export const SHOWN_CARD_SELECTOR = "[data-slop-show]";
 export const INDICATOR_ID = "slop-feed-status";
 const SAFETY_MS = 500;
-
-/** Ключи словаря (static/_locales) для состояний индикатора. */
-export const INDICATOR_KEYS: Record<Exclude<Indicator, "off">, MsgKey> = {
-  searching: "autofill_searching",
-  exhausted: "autofill_exhausted",
-  unsafe: "autofill_unsafe",
-};
-/** Текст индикатора на языке браузера (в DOM только через textContent). */
-export const indicatorText = (state: Exclude<Indicator, "off">): string => t(INDICATOR_KEYS[state]);
 
 /** Низы видимых карточек относительно окна; пусто — не заполнено. */
 export function isFilled(bottoms: number[], innerHeight: number): boolean {
@@ -39,6 +31,28 @@ export function measureFilled(doc: Pick<Document, "querySelectorAll">, innerHeig
     if (r.height > 0) bottoms.push(r.bottom);
   }
   return isFilled(bottoms, innerHeight);
+}
+
+/** Карточка реально отображается: ненулевой размер (display:none у себя или предка даёт 0) и не visibility:hidden. */
+export function isRendered(el: Element): boolean {
+  const r = el.getBoundingClientRect();
+  if (r.width <= 0 || r.height <= 0) return false;
+  const cv = (el as { checkVisibility?: (o?: { visibilityProperty?: boolean }) => boolean }).checkVisibility;
+  return typeof cv === "function" ? cv.call(el, { visibilityProperty: true }) : true;
+}
+
+/**
+ * Число отображаемых показанных карточек (по уникальным видео). Показанные нами карточки могут не быть видны
+ * пользователю: их прячет чужой CSS/расширение, они лежат в скрытой странице SPA (YouTube держит прежние страницы в DOM
+ * с display:none) — такие в цель не засчитываются.
+ */
+export function countRenderedShown(doc: Pick<Document, "querySelectorAll">, idOf: (el: Element) => string | null): number {
+  const keys = new Set<unknown>();
+  for (const el of doc.querySelectorAll(SHOWN_CARD_SELECTOR)) {
+    if (!isRendered(el)) continue;
+    keys.add(idOf(el) ?? el);
+  }
+  return keys.size;
 }
 
 interface StyledLike {
@@ -178,30 +192,141 @@ function defaultEnv(): ReenterEnv {
   };
 }
 
-/** Индикатор внизу ленты: один элемент перед continuation, только textContent. */
+/** Индикатор внизу ленты: один блок перед continuation (или после последней карточки, если его нет), только textContent. */
+export const MORE_ID = "slop-feed-more";
+export const SETTINGS_ID = "slop-feed-settings";
+
+export interface IndicatorTexts { title: string; detail: string }
+
+const FAILURE_KEYS: Record<Failure, MsgKey> = {
+  no_key: "autofill_error_no_key",
+  rate_limited: "autofill_error_rate_limited",
+  network: "autofill_error_network",
+  bad_response: "autofill_error_bad_response",
+  no_credits: "autofill_error_no_credits",
+  access_denied: "autofill_error_access_denied",
+};
+
+/** Заголовок и пояснение состояния (чистая функция: тексты из словаря, подстановки — только числа и коды). */
+export function indicatorTexts(state: Exclude<Indicator, "off">, info: IndicatorInfo): IndicatorTexts {
+  switch (state) {
+    case "searching":
+      return { title: t("autofill_searching"), detail: t("autofill_progress", info.found, info.target, info.checked) };
+    case "done":
+      return { title: t("autofill_done", info.found), detail: t("autofill_done_hint") };
+    case "exhausted": {
+      let title: string;
+      if (info.reason === "empty" && info.sinceGrowth > 0) title = t("autofill_stop_empty", info.sinceGrowth);
+      else if (info.reason === "total") title = t("autofill_stop_total", info.checked, info.found, info.target);
+      else if (info.reason === "stall") title = t("autofill_stop_stall");
+      else title = t("autofill_stop_nofeed"); // потолок ожидания и порции, которые не приходят
+      return { title, detail: t("autofill_stop_hint") };
+    }
+    case "end":
+      return { title: t("autofill_end"), detail: t("autofill_end_detail", info.found, info.checked) };
+    case "unsafe":
+      return { title: t("autofill_unsafe"), detail: "" };
+    case "error":
+      return { title: t("autofill_error", t(FAILURE_KEYS[info.failure ?? "no_key"])), detail: t(info.failure === "no_key" || info.failure === "no_credits" || info.failure === "access_denied" || info.failure === null ? "autofill_error_hint" : "autofill_error_hint_retry") };
+  }
+}
+
 export class IndicatorView {
   private el: HTMLElement | undefined;
+  private title: HTMLElement | undefined;
+  private detail: HTMLElement | undefined;
+  private fill: HTMLElement | undefined;
+  private bar: HTMLElement | undefined;
+  private more: HTMLButtonElement | undefined;
+  private settings: HTMLButtonElement | undefined;
 
-  set(state: Indicator, doc: Document = document): void {
-    if (state === "off") {
-      if (this.el) this.el.hidden = true;
-      return;
-    }
+  /** onMore — явная просьба «искать дальше» (кнопка при остановке; единственный путь там, где прокрутки нет); onSettings — открыть настройки. */
+  constructor(
+    private onMore: () => void = () => {},
+    private onSettings: () => void = () => {},
+  ) {}
+
+  private hide(): void {
+    if (this.el) this.el.hidden = true;
+  }
+
+  private build(doc: Document): HTMLElement {
+    const mk = (tag: string, cls?: string): HTMLElement => {
+      const e = doc.createElement(tag);
+      if (cls) e.className = cls;
+      return e;
+    };
+    const button = (id: string, label: MsgKey, cls: string, onClick: () => void): HTMLButtonElement => {
+      const b = doc.createElement("button");
+      b.id = id;
+      b.type = "button";
+      b.className = cls;
+      b.textContent = t(label);
+      b.hidden = true;
+      b.addEventListener("click", (e) => {
+        if (e.isTrusted) onClick(); // скрипт страницы бюджет не выдаёт и настройки не открывает
+      });
+      return b;
+    };
+    const el = mk("div");
+    el.id = INDICATOR_ID;
+    el.setAttribute("role", "status");
+    el.setAttribute("aria-live", "polite");
+    el.setAttribute("aria-atomic", "true");
+    const icon = mk("span", "slop-fs-icon");
+    icon.setAttribute("aria-hidden", "true");
+    const body = mk("div", "slop-fs-body");
+    this.title = mk("div", "slop-fs-title");
+    this.detail = mk("div", "slop-fs-detail");
+    this.bar = mk("div", "slop-fs-bar");
+    this.bar.setAttribute("aria-hidden", "true");
+    this.fill = mk("span", "slop-fs-fill");
+    this.bar.append(this.fill);
+    body.append(this.title, this.detail);
+    const actions = mk("div", "slop-fs-actions");
+    this.more = button(MORE_ID, "autofill_more", "slop-fs-btn slop-fs-primary", this.onMore);
+    this.settings = button(SETTINGS_ID, "autofill_settings", "slop-fs-btn", this.onSettings);
+    actions.append(this.more, this.settings);
+    // внешний блок — контейнер для container query (раскладка по ширине самого блока), карточка внутри
+    const card = mk("div", "slop-fs-card");
+    card.append(icon, body, actions, this.bar);
+    el.append(card);
+    return el;
+  }
+
+  set(state: Indicator, info: IndicatorInfo, doc: Document = document): void {
+    if (state === "off") return this.hide();
+    // Якорь: перед continuation (новые карточки YouTube вставляет перед ним); нет continuation — после последней карточки.
     const cont = findContinuation(doc);
-    const parent = cont?.parentElement;
-    if (!cont || !parent) {
-      if (this.el) this.el.hidden = true;
-      return;
+    let parent: Element | null | undefined = cont?.parentElement;
+    let lastCard: Element | undefined;
+    if (!cont) {
+      const cards = findCards(doc);
+      lastCard = cards[cards.length - 1];
+      parent = lastCard?.parentElement;
     }
-    if (!this.el) {
-      this.el = doc.createElement("div");
-      this.el.id = INDICATOR_ID;
-      this.el.setAttribute("role", "status");
+    if (!parent) return this.hide();
+    this.el ??= this.build(doc);
+    const el = this.el;
+    const ordered = el.parentElement === parent && (cont ? el.nextElementSibling === cont : el.previousElementSibling === lastCard);
+    if (!ordered) parent.insertBefore(el, cont ?? lastCard!.nextSibling);
+    const tx = indicatorTexts(state, info);
+    const set = (n: HTMLElement | undefined, v: string): void => {
+      if (n && n.textContent !== v) n.textContent = v; // без лишних мутаций и повторных объявлений скринридера
+    };
+    set(this.title, tx.title);
+    set(this.detail, tx.detail);
+    // Счётчики прогресса видны, но скринридеру не объявляются на каждом тике: объявляется смена состояния (заголовок и пояснение).
+    if (this.detail) {
+      if (state === "searching") this.detail.setAttribute("aria-hidden", "true");
+      else this.detail.removeAttribute("aria-hidden");
     }
-    if (this.el.nextElementSibling !== cont || this.el.parentElement !== parent) parent.insertBefore(this.el, cont);
-    this.el.dataset.state = state;
-    this.el.textContent = indicatorText(state);
-    this.el.hidden = false;
+    if (this.bar) this.bar.hidden = state !== "searching";
+    if (this.fill) this.fill.style.setProperty("--slop-p", `${info.target > 0 ? Math.min(100, Math.round((info.found / info.target) * 100)) : 0}%`);
+    if (this.more) this.more.hidden = state !== "exhausted";
+    if (this.settings) this.settings.hidden = state !== "error";
+    if (el.dataset.state !== state) el.dataset.state = state;
+    el.hidden = false;
   }
 }
 

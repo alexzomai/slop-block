@@ -12,6 +12,9 @@
       <h1 data-i18n="ext_name"></h1>
       <label class="row"><input type="checkbox" id="enabled" class="switch"> <span data-i18n="popup_enabled"></span></label>
     </header>
+    <p id="provider-notice" class="hint" role="status" hidden>
+      <span id="provider-notice-text"></span> <a href="options.html" target="_blank" rel="noopener" data-i18n="popup_settings_link"></a>
+    </p>
     <p id="key-hint" class="hint" role="status" hidden>
       <span id="key-hint-text" data-i18n="popup_key_hint"></span> <a href="options.html" target="_blank" rel="noopener" data-i18n="popup_settings_link"></a>
     </p>
@@ -24,6 +27,8 @@
       </label>
       <label class="row"><input type="checkbox" id="skip-subs"> <span data-i18n="popup_skip_subs"></span></label>
       <label class="row"><input type="checkbox" id="filter-search"> <span data-i18n="popup_filter_search"></span></label>
+      <label class="row" id="compat-row"><input type="checkbox" id="compat-ubol" aria-describedby="compat-hint"> <span data-i18n="popup_compat_ubol"></span></label>
+      <p id="compat-hint" class="note" data-i18n="popup_compat_ubol_hint"></p>
       <label class="field"><span data-i18n="popup_feed_target"></span>
         <input type="number" id="feed-target" min="6" max="30" step="1" inputmode="numeric" data-i18n-attr="aria-label:popup_feed_target">
       </label>

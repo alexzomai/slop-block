@@ -94,7 +94,7 @@ describe("listener: slop/peek", () => {
 
 // --- content: FeedFilter + peek ---
 interface Card { id: string; hidden: boolean; shown: boolean; instant?: boolean }
-const S = (mode: "allowlist" | "blocklist" = "allowlist"): Settings => ({ enabled: true, tags: [{ id: "t0", text: "x", enabled: true }], mode, skipSubscriptions: false, filterSearch: false, feedTarget: 12 });
+const S = (mode: "allowlist" | "blocklist" = "allowlist"): Settings => ({ enabled: true, tags: [{ id: "t0", text: "x", enabled: true }], mode, skipSubscriptions: false, filterSearch: false, compatUbol: false, feedTarget: 12 });
 const ok = (hide: boolean): DecidedOk => ({ ok: true, hide, matchedTagIds: hide ? [] : ["t0"], probabilities: {} });
 const at = (ms: number) => vi.advanceTimersByTimeAsync(ms);
 

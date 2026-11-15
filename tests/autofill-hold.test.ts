@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { Autofill, INTENT_COOLDOWN_MS, LOAD_TIMEOUT_MS, MAX_EMPTY, type Snapshot } from "../src/content/autofill";
+import { Autofill, INTENT_COOLDOWN_MS, LOAD_TIMEOUT_MS, MAX_EMPTY, STALL_MS, type Snapshot } from "../src/content/autofill";
 import { createHider, HIDE_BATCH_MS } from "../src/content/dom";
 import { createHold } from "../src/content/feed";
 import { readFileSync } from "node:fs";
@@ -139,6 +139,83 @@ describe("Autofill: жест пользователя после останов�
     const s = setup();
     s.a.userIntent();
     expect(s.triggers()).toBe(0);
+    s.a.loadMore();
+    expect(s.triggers()).toBe(0);
+  });
+  it("«загрузить ещё» возобновляет сразу, без интервала ожидания жеста (scroll-stuck)", () => {
+    const s = stopByLimit();
+    const n = s.triggers();
+    s.a.userIntent(); // кулдаун ещё не прошёл (первый жест в этом заходе был «давно»: now=0 → -∞, поэтому тратим его)
+    s.tick(1);
+    // снова упираемся в лимит и сразу просим кнопкой
+    for (let i = 0; i < MAX_EMPTY + 1; i++) {
+      s.set({ cards: 2000 + i * 30 });
+      s.a.evaluate();
+    }
+    const m = s.triggers();
+    s.a.userIntent();
+    expect(s.triggers()).toBe(m); // жест в кулдауне
+    s.a.loadMore();
+    expect(s.triggers()).toBe(m + 1); // кнопка — нет
+    expect(n).toBeGreaterThan(0);
+  });
+});
+
+describe("Autofill: зависшее ожидание решений (scroll-stuck)", () => {
+  function stalled() {
+    let snap: Snapshot = { ...base, visible: 2, pending: 3 };
+    let t = 0;
+    const ind: string[] = [];
+    const wakes: number[] = [];
+    let triggers = 0;
+    const a = new Autofill({ snapshot: () => snap, trigger: () => (triggers++, "ok"), indicator: (i) => void ind.push(i), now: () => t, wake: (ms) => void wakes.push(ms), hold: () => {}, liveCards: () => snap.cards });
+    return { a, ind, wakes, triggers: () => triggers, tick: (ms: number) => void (t += ms), set: (p: Partial<Snapshot>) => void (snap = { ...snap, ...p }) };
+  }
+  it("решения не приходят STALL_MS — «ищу» сменяется остановкой, а не висит вечно", () => {
+    const s = stalled();
+    s.a.evaluate();
+    expect(s.ind.at(-1)).toBe("searching");
+    expect(s.wakes).toEqual([STALL_MS]);
+    s.tick(STALL_MS - 1);
+    s.a.evaluate();
+    expect(s.ind.at(-1)).toBe("searching");
+    s.tick(1);
+    s.a.evaluate();
+    expect(s.ind.at(-1)).toBe("exhausted");
+    expect(s.triggers()).toBe(0);
+    // кнопка возобновляет; решения всё ещё не идут — снова ожидание с новым отсчётом
+    s.a.loadMore();
+    expect(s.ind.at(-1)).toBe("searching");
+  });
+  it("поздние отрицательные решения засчитывают порцию пустой ровно один раз: N=5 не превышается (ревью r1 P2-1)", () => {
+    const s = stalled();
+    s.set({ pending: 0, visible: 0, cards: 6 });
+    s.a.evaluate(); // порция 1 запущена
+    for (let i = 1; i <= 4; i++) {
+      s.set({ cards: 6 + i * 10 }); // порция i пришла и решена, видимых нет
+      s.a.evaluate();
+    }
+    expect(s.triggers()).toBe(5); // 4 пустых учтены, пятая запущена
+    s.set({ cards: 56, pending: 15 }); // пятая пришла, решения идут медленно
+    s.a.evaluate();
+    s.tick(STALL_MS);
+    s.a.evaluate();
+    expect(s.ind.at(-1)).toBe("exhausted"); // зависание: только остановка/кнопка
+    s.set({ pending: 0 }); // поздние отрицательные ответы
+    s.a.evaluate();
+    expect(s.triggers()).toBe(5); // шестой порции нет: пятая засчитана пустой
+    expect(s.ind.at(-1)).toBe("exhausted");
+  });
+  it("решения пришли вовремя — отсчёт сбрасывается", () => {
+    const s = stalled();
+    s.a.evaluate();
+    s.tick(STALL_MS - 1);
+    s.set({ pending: 0, visible: 8 });
+    s.a.evaluate(); // trigger: pending 0
+    s.set({ pending: 2 });
+    s.tick(STALL_MS - 1);
+    s.a.evaluate();
+    expect(s.ind.at(-1)).toBe("searching");
   });
 });
 

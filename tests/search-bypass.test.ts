@@ -6,7 +6,7 @@ import { DEFAULT_SETTINGS, effectiveState, normalize, setFilterSearch, type Mode
 import { fromItems, loadSettings, saveSettings, toItems } from "../src/shared/storage";
 import { PopupController } from "../src/popup/controller";
 
-const S = (o: Partial<Settings> = {}): Settings => ({ enabled: true, tags: [{ id: "t0", text: "IT", enabled: true }], mode: "allowlist", skipSubscriptions: true, filterSearch: false, feedTarget: 12, ...o });
+const S = (o: Partial<Settings> = {}): Settings => ({ enabled: true, tags: [{ id: "t0", text: "IT", enabled: true }], mode: "allowlist", skipSubscriptions: true, filterSearch: false, compatUbol: false, feedTarget: 12, ...o });
 
 describe("isSearchPath", () => {
   it.each([

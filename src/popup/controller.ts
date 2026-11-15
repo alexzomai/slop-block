@@ -1,4 +1,4 @@
-import { addTag, removeTag, setEnabled, setFeedTarget, setMode, setFilterSearch, setSkipSubscriptions, toggleTag, type AddError, type Mode, type Settings } from "../shared/settings";
+import { addTag, removeTag, setCompatUbol, setEnabled, setFeedTarget, setMode, setFilterSearch, setSkipSubscriptions, toggleTag, type AddError, type Mode, type Settings } from "../shared/settings";
 
 /** Код сообщения (пусто — нет сообщения); текст подбирает UI по языку браузера. */
 export type PopupMessage = AddError | "save" | "bad_target" | "";
@@ -67,6 +67,9 @@ export class PopupController {
   }
   setFilterSearch(on: boolean): Promise<boolean> {
     return this.commit((s) => ({ settings: setFilterSearch(s, on) }));
+  }
+  setCompatUbol(on: boolean): Promise<boolean> {
+    return this.commit((s) => ({ settings: setCompatUbol(s, on) }));
   }
   setFeedTarget(value: number): Promise<boolean> {
     return this.commit((s) => (Number.isFinite(value) ? { settings: setFeedTarget(s, value) } : { settings: s, error: "bad_target" }));

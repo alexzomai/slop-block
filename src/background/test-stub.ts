@@ -1,6 +1,6 @@
 // ТОЛЬКО для тестовой сборки (dist-test/): детерминированная замена боевого background.
 // Скрывает видео, чей заголовок содержит слово из текста любого тега; заголовок "ERR" → network.
-// globalThis.__forceError (no_key|network|bad_response|rate_limited) заставляет отвечать ошибкой;
+// globalThis.__forceError (no_key|network|bad_response|rate_limited|no_credits|access_denied) заставляет отвечать ошибкой;
 // globalThis.__delay задерживает ответ (мс);
 // globalThis.__calls накапливает videoId всех запросов (e2e проверяет «0 запросов» на подписках).
 import type { DecideRequest, DecideResponse } from "../shared/decision";
@@ -10,7 +10,7 @@ import type { UsageResponse } from "../shared/usage";
 // Маркер: по нему тест убеждается, что заглушка не попала в боевую сборку.
 (globalThis as Record<string, unknown>).__SLOP_TEST_STUB__ = true;
 
-export type ForcedError = "no_key" | "network" | "bad_response" | "rate_limited";
+export type ForcedError = "no_key" | "network" | "bad_response" | "rate_limited" | "no_credits" | "access_denied";
 
 export function decide(req: DecideRequest, forceError?: ForcedError): DecideResponse {
   if (forceError) return { ok: false, error: forceError };
@@ -41,6 +41,12 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
       sendResponse(usage());
       return false;
     }
+    if ((msg as { type?: unknown } | null)?.type === "slop/open-options") {
+      const g = globalThis as { __openOptions?: number };
+      g.__openOptions = (g.__openOptions ?? 0) + 1; // e2e: кнопка «Настройки» индикатора дошла до background
+      sendResponse({ ok: true });
+      return false;
+    }
     if ((msg as { type?: unknown } | null)?.type === "slop/peek") {
       // у заглушки нет кэша: все видео — промахи (e2e считает число проверок кэша)
       const g = globalThis as { __peeks?: number };
@@ -52,11 +58,12 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
     const g = globalThis as { __calls?: string[]; __forceError?: ForcedError; __delay?: number };
     (g.__calls ??= []).push(m.video.videoId);
     const answer = decide(m as DecideRequest, g.__forceError);
-    if (!g.__delay) {
+    const delay = m.video.title.includes("SLOWDEC") ? 120_000 : g.__delay; // SLOWDEC: ответ «почти никогда» (e2e feed-hang)
+    if (!delay) {
       sendResponse(answer);
       return false;
     }
-    setTimeout(() => sendResponse(answer), g.__delay); // e2e: проверить состояние «ответа ещё нет»
+    setTimeout(() => sendResponse(answer), delay); // e2e: проверить состояние «ответа ещё нет»
     return true;
   });
 }

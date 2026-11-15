@@ -9,6 +9,7 @@ import { PopupController, type PopupMessage } from "./controller";
 import { clampHeight, counterView, isSubmitKey } from "./input";
 import { modeTexts } from "./texts";
 import { usageView } from "./usage";
+import { loadProviderNotice } from "../shared/provider-notice";
 
 function $(id: string): HTMLElement {
   return document.getElementById(id)!;
@@ -65,6 +66,7 @@ function render(c: PopupController, s: Settings, message: PopupMessage): void {
   ($("mode") as HTMLSelectElement).value = s.mode;
   ($("skip-subs") as HTMLInputElement).checked = s.skipSubscriptions;
   ($("filter-search") as HTMLInputElement).checked = s.filterSearch;
+  ($("compat-ubol") as HTMLInputElement).checked = s.compatUbol;
   ($("feed-target") as HTMLInputElement).value = String(s.feedTarget);
   const mt = modeTexts(s.mode);
   ($("text") as HTMLTextAreaElement).placeholder = mt.placeholder;
@@ -133,6 +135,7 @@ async function main(): Promise<void> {
   $("mode").addEventListener("change", (e) => void controller.setMode((e.target as HTMLSelectElement).value as Mode));
   $("skip-subs").addEventListener("change", (e) => void controller.setSkipSubscriptions((e.target as HTMLInputElement).checked));
   $("filter-search").addEventListener("change", (e) => void controller.setFilterSearch((e.target as HTMLInputElement).checked));
+  $("compat-ubol").addEventListener("change", (e) => void controller.setCompatUbol((e.target as HTMLInputElement).checked));
   $("feed-target").addEventListener("change", (e) => void controller.setFeedTarget((e.target as HTMLInputElement).valueAsNumber));
   const input = $("text") as HTMLTextAreaElement;
   const submit = (): void => {
@@ -156,6 +159,7 @@ async function main(): Promise<void> {
   updateCounter();
   input.focus();
   loadUsage();
+  void loadProviderNotice().then((n) => { $("provider-notice-text").textContent = n ?? ""; $("provider-notice").hidden = n === null; });
 }
 
 void main();

@@ -53,7 +53,8 @@ export function createUsageService(o: UsageServiceOptions) {
     const res = await callJev({ fetch: o.fetch, key, url: KEY_ENDPOINT, method: "GET", sleep: o.sleep, random: o.random, schedule: o.limiter.run });
     if (!res.ok) {
       if (res.error === "key_rejected") await rejections.mark("openrouter", key, keyGen).catch(() => undefined);
-      return { ok: false, error: res.error };
+      // 402/403-политика на запросе трат: для блока «Траты» это недоступность сети, не отказ ключа
+      return { ok: false, error: res.error === "no_credits" || res.error === "access_denied" ? "network" : res.error };
     }
     const remote = parseKeyInfo(res.json);
     if (!remote) return { ok: false, error: "bad_response" };

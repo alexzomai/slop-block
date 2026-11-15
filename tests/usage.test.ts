@@ -65,7 +65,7 @@ describe("usage service", () => {
     expect(r).toMatchObject({ ok: false, error: "key_rejected" });
     expect(JSON.stringify(r)).not.toMatch(/EVILTEXT|SECRET/);
   });
-  it.each([[429, "rate_limited"], [503, "network"], [402, "bad_response"], [400, "bad_response"]])("HTTP %i → %s", async (s, e) => {
+  it.each([[429, "rate_limited"], [503, "network"], [402, "network"], [400, "bad_response"]])("HTTP %i → %s", async (s, e) => {
     const { svc } = setup(vi.fn(async () => resp(s, { error: { message: "EVILTEXT" } })));
     const r = await svc.get();
     expect(r).toMatchObject({ ok: false, error: e });

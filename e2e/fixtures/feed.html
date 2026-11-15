@@ -15,6 +15,8 @@ ytd-continuation-item-renderer{display:block;grid-column:1/-1;height:60px;text-a
 // ghost — см. ниже, late — continuation вставляется в DOM через столько мс после загрузки, lat — задержка загрузки порции (мс, по умолчанию 150), renew=1 — после каждой порции новый continuation (поведение YouTube: цепочка порций, пока он в окне),
 // parts — сколько всего порций (0 — continuation не грузит ничего), ch — высота карточки (px),
 // list — одна колонка без grid, anchor=none — body{overflow-anchor:none},
+// ubol=ads — эмуляция uBlock Origin Lite: после каждой 3-й карточки рекламный слот (ytd-rich-item-renderer > #content > ytd-ad-slot-renderer),
+// спрятанный CSS-правилом uBOL для YouTube (display:none!important, селектор с :has); ubol=zap — чётные карточки спрятаны чужим CSS ([data-zap]).
 // probe=bottom|<px> — когда проявились все first карточек, прокрутить и покадрово записывать
 // scrollHeight/scrollTop (window.__rec) до window.__stopProbe = true. Запасного padding снизу нет.
 const q = new URLSearchParams(location.search);
@@ -35,9 +37,34 @@ for (const [o, n] of [[window, "scrollTo"], [window, "scrollBy"], [Element.proto
   const orig = o[n];
   o[n] = function (...a) { window.__scrollApi++; return orig.apply(this, a); };
 }
+const ubol = q.get("ubol");
+if (ubol) {
+  const st = document.createElement("style");
+  st.textContent = ubol === "ads"
+    ? "ytd-rich-item-renderer:has(> #content > ytd-ad-slot-renderer), #contents > ytd-rich-item-renderer:has(> ytd-ad-slot-renderer) { display:none!important }"
+    : "ytd-rich-item-renderer[data-zap] { display:none!important }";
+  document.head.append(st);
+}
 let cont = document.getElementById("cont");
 let n = 0;
+// dup=<N> — каждая порция (после первых 6 карточек) начинается с N повторов уже показанных видео (повторная выдача YouTube):
+// новые узлы с теми же videoId и заголовками. dupretry=1 — вход continuation во время загрузки порции (повтор триггера
+// расширения) ставит ещё одну порцию-повтор только что пришедших видео; window.__dupRetry считает такие входы.
+const dupN = num("dup", 0);
+const shownCards = []; // {id, title} по порядку добавления
+window.__dupRetry = 0;
+function addDup(list) {
+  for (const s of list) {
+    const el = document.createElement("ytd-rich-item-renderer");
+    el.innerHTML = '<a href="/watch?v=' + s.id + '"><span id="video-title"></span></a><ytd-channel-name><a>Канал</a></ytd-channel-name>';
+    el.querySelector("#video-title").textContent = s.title;
+    el.dataset.dup = "1";
+    cont.before(el);
+  }
+}
 function addCards(count, matched) {
+  const portion = n >= 6;
+  if (portion && dupN > 0) addDup(shownCards.slice(0, dupN));
   for (let i = 0; i < count; i++) {
     const el = document.createElement("ytd-rich-item-renderer");
     const id = "vid" + String(++n).padStart(8, "0");
@@ -45,10 +72,62 @@ function addCards(count, matched) {
     const title = i < matched ? "Нейро-похудение выпуск " + n : "Борщ рецепт " + n;
     el.innerHTML = '<a href="/watch?v=' + id + '"><span id="video-title"></span></a><ytd-channel-name><a>Канал</a></ytd-channel-name>';
     el.querySelector("#video-title").textContent = title;
+    shownCards.push({ id, title });
+    if (ubol === "zap" && n % 2 === 0) el.setAttribute("data-zap", "");
+    cont.before(el);
+    if (ubol === "ads" && n % 3 === 0) {
+      const ad = document.createElement("ytd-rich-item-renderer");
+      ad.setAttribute("data-ad", "1");
+      ad.innerHTML = '<div id="content"><ytd-ad-slot-renderer>Реклама</ytd-ad-slot-renderer></div>';
+      cont.before(ad);
+    }
+  }
+  addAds();
+}
+// ads=<N> — рекламные слоты (разные рендереры YouTube) в каждой порции и в первой: N штук, виды по кругу:
+//  0) ytd-ad-slot-renderer + in-feed-ad-layout, ссылка-редирект pagead, без /watch (как на скриншоте «Sponsored»);
+//  1) карточка с ad-badge-view-model и ссылкой /watch?v=adv… с заголовком, подходящим под тег (платный запрос обязан не уйти);
+//  2) только бейдж-текст «Реклама» (badge-shape) без рекламных тегов и ссылок — признак «значок»;
+//  3) ytd-display-ad-renderer.
+const adsPer = num("ads", 0);
+let adN = 0;
+function addAds() {
+  for (let i = 0; i < adsPer; i++) {
+    const el = document.createElement("ytd-rich-item-renderer");
+    const kind = adN++ % 4;
+    el.dataset.ad = String(kind);
+    if (kind === 0) el.innerHTML = '<ytd-ad-slot-renderer><ytd-in-feed-ad-layout-renderer><a href="https://www.googleadservices.com/pagead/aclk?sa=L&adurl=x"><span id="video-title"></span></a><span class="b">Sponsored</span></ytd-in-feed-ad-layout-renderer></ytd-ad-slot-renderer>';
+    else if (kind === 1) el.innerHTML = '<a href="/watch?v=adv' + String(adN).padStart(8, "0") + '"><span id="video-title"></span></a><ad-badge-view-model>Sponsored</ad-badge-view-model>';
+    else if (kind === 2) el.innerHTML = '<a href="/watch?v=adw' + String(adN).padStart(8, "0") + '"><span id="video-title"></span></a><badge-shape><span class="yt-badge-shape__text">Реклама</span></badge-shape>';
+    else el.innerHTML = '<ytd-display-ad-renderer><a href="/somewhere"><span id="video-title"></span></a></ytd-display-ad-renderer>';
+    el.querySelector("#video-title").textContent = "Нейро-похудение: реклама " + adN;
     cont.before(el);
   }
 }
 addCards(6, first);
+// rerender=<мс> — YouTube периодически перерисовывает карточки: заменяет узлы клонами с теми же videoId (без наших data-slop-*);
+// slow=1 — плюс одна карточка «SLOWDEC» (решение не приходит), которая заменяется новой с другим videoId при каждой перерисовке.
+if (q.has("rerender")) {
+  let slowN = 0;
+  const addSlow = () => {
+    const el = document.createElement("ytd-rich-item-renderer");
+    const id = "slow" + String(++slowN).padStart(8, "0");
+    el.id = id;
+    el.innerHTML = '<a href="/watch?v=' + id + '"><span id="video-title"></span></a><ytd-channel-name><a>Канал</a></ytd-channel-name>';
+    el.querySelector("#video-title").textContent = "SLOWDEC " + slowN;
+    cont.before(el);
+  };
+  if (q.has("slow")) addSlow();
+  setInterval(() => {
+    for (const el of [...document.querySelectorAll("ytd-rich-item-renderer")]) {
+      if (el.id.startsWith("slow")) { el.remove(); continue; }
+      const c = el.cloneNode(true);
+      for (const a of [...c.attributes]) if (a.name.startsWith("data-slop") || a.name === "class") c.removeAttribute(a.name);
+      el.replaceWith(c);
+    }
+    if (q.has("slow")) addSlow();
+  }, num("rerender", 5000));
+}
 // счётчик попыток расширения: continuation получает inline transform (выход/вход для IntersectionObserver)
 window.__reenters = 0;
 new MutationObserver((ms) => { for (const m of ms) if (m.target.tagName === "YTD-CONTINUATION-ITEM-RENDERER" && m.target.style.transform !== "") window.__reenters++; }).observe(document.getElementById("contents"), { attributes: true, attributeFilter: ["style"], subtree: true });
@@ -74,12 +153,28 @@ if (q.has("probe")) {
   }).observe(document.getElementById("contents"), { attributes: true, subtree: true, attributeFilter: ["data-slop-show"] });
 }
 let loading = false;
+let retryDup = false;
 const io = new IntersectionObserver((es) => {
   for (const e of es) {
+    if (e.isIntersecting && loading && q.has("dupretry")) { window.__dupRetry++; retryDup = true; }
     if (!e.isIntersecting || loading || window.__portions >= parts) continue;
+    if (q.has("swap")) { // YouTube заменил continuation новым элементом, который никто не наблюдает: порция не придёт
+      io.unobserve(cont);
+      const old = cont;
+      cont = document.createElement("ytd-continuation-item-renderer");
+      cont.id = "cont";
+      cont.textContent = "загрузка…";
+      old.replaceWith(cont);
+      continue;
+    }
+    // mute=N — YouTube не отзывается на первые N входов continuation (на живой ленте порция не пришла на наш триггер,
+    // а DOM при этом не менялся): повтор триггера должен дать порцию раньше таймаута
+    if ((window.__muted ??= 0) < num("mute", 0)) { window.__muted++; continue; }
     loading = true;
     setTimeout(() => {
+      const before = shownCards.length;
       addCards(per, good);
+      if (retryDup) { retryDup = false; addDup(shownCards.slice(before)); }
       window.__portions++;
       (window.__log ??= []).push({ t: Math.round(performance.now()), cards: n, hold: document.documentElement.hasAttribute("data-slop-hold"), re: window.__reenters });
       loading = false;

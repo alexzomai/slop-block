@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
+import type { IndicatorInfo } from "../src/content/autofill";
 import { setI18nSource } from "../src/shared/i18n";
 import { getMessageFor } from "./helpers/messages";
-import { FILL_MARGIN, INDICATOR_KEYS, indicatorText, isFilled, reenter, restoreScroll, type Geometry, type ReenterEnv } from "../src/content/feed";
+import { FILL_MARGIN, countRenderedShown, isRendered, indicatorTexts, isFilled, reenter, restoreScroll, type Geometry, type ReenterEnv } from "../src/content/feed";
 
 describe("isFilled", () => {
   it.each([
@@ -18,17 +19,52 @@ describe("isFilled", () => {
 
 describe("тексты индикатора (через словарь)", () => {
   afterEach(() => setI18nSource(undefined));
-  it("ключи состояний", () => {
-    expect(INDICATOR_KEYS).toEqual({ searching: "autofill_searching", exhausted: "autofill_exhausted", unsafe: "autofill_unsafe" });
+  const info = (p: Partial<IndicatorInfo> = {}): IndicatorInfo => ({ found: 3, target: 12, checked: 48, reason: null, sinceGrowth: 0, failure: null, ...p });
+  const use = (lang: "en" | "ru") => setI18nSource({ getMessage: getMessageFor(lang), getUILanguage: () => lang });
+
+  it.each([
+    ["ru", "Ищу подходящие видео…", "Найдено 3 из 12 · проверено 48 видео"],
+    ["en", "Looking for matching videos…", "Found 3 of 12 · 48 checked"],
+  ] as const)("поиск с прогрессом, язык %s", (lang, title, detail) => {
+    use(lang);
+    expect(indicatorTexts("searching", info())).toEqual({ title, detail });
   });
   it.each([
-    ["ru", "Ищу ещё подходящие видео…", "Больше подходящих не нашлось — прокрутите или измените теги", "Прокрутите вниз, чтобы загрузить ещё"],
-    ["en", "Looking for more matching videos…", "No more matching videos found — scroll or change your tags", "Scroll down to load more"],
-  ] as const)("язык %s", (lang, searching, exhausted, unsafe) => {
-    setI18nSource({ getMessage: getMessageFor(lang), getUILanguage: () => lang });
-    expect(indicatorText("searching")).toBe(searching);
-    expect(indicatorText("exhausted")).toBe(exhausted);
-    expect(indicatorText("unsafe")).toBe(unsafe);
+    ["ru", "Готово. Подходящих видео: 12", "Прокрутите вниз — подберу ещё"],
+    ["en", "Done. Matching videos: 12", "Scroll down and I'll find more"],
+  ] as const)("цель достигнута, язык %s", (lang, title, detail) => {
+    use(lang);
+    expect(indicatorTexts("done", info({ found: 12 }))).toEqual({ title, detail });
+  });
+  it("остановка: причина определяет текст", () => {
+    use("ru");
+    expect(indicatorTexts("exhausted", info({ reason: "empty", sinceGrowth: 75 })).title).toBe("Поиск остановлен — в последних 75 видео ничего подходящего");
+    // пустая серия, но карточки не приходили вовсе — это YouTube, а не «ничего подходящего»
+    expect(indicatorTexts("exhausted", info({ reason: "empty", sinceGrowth: 0 })).title).toBe("Поиск остановлен — YouTube не отдаёт новые видео");
+    expect(indicatorTexts("exhausted", info({ reason: "ceiling" })).title).toBe("Поиск остановлен — YouTube не отдаёт новые видео");
+    expect(indicatorTexts("exhausted", info({ reason: "stall" })).title).toBe("Поиск остановлен — проверка видео не отвечает");
+    expect(indicatorTexts("exhausted", info({ reason: "total" })).title).toBe("Поиск остановлен — проверено 48 видео, найдено 3 из 12");
+    use("en");
+    expect(indicatorTexts("exhausted", info({ reason: "empty", sinceGrowth: 75 })).title).toBe("Search stopped — none of the last 75 videos matched");
+    expect(indicatorTexts("exhausted", info({ reason: "stall" })).detail).toBe("Press the button to continue, or change your tags");
+  });
+  it("конец ленты и небезопасная геометрия", () => {
+    use("ru");
+    expect(indicatorTexts("end", info())).toEqual({ title: "Больше видео нет", detail: "Найдено: 3 · проверено: 48" });
+    expect(indicatorTexts("unsafe", info())).toEqual({ title: "Прокрутите вниз, чтобы загрузить ещё", detail: "" });
+  });
+  it.each([
+    ["no_key", "Фильтр не работает: нет ключа или ключ отклонён"],
+    ["rate_limited", "Фильтр не работает: превышен лимит запросов"],
+    ["network", "Фильтр не работает: нет связи с провайдером"],
+    ["bad_response", "Фильтр не работает: провайдер вернул непонятный ответ"],
+    ["no_credits", "Фильтр не работает: у провайдера нет кредитов — пополните баланс"],
+    ["access_denied", "Фильтр не работает: провайдер закрыл доступ из вашей сети или региона — включите VPN"],
+  ] as const)("ошибка фильтра: %s", (failure, title) => {
+    use("ru");
+    // без ключа шлюз снят и лента правда без фильтра; при сбое провайдера карточки до повторов скрыты — текст этого не обещает
+    const detail = failure === "no_key" || failure === "no_credits" || failure === "access_denied" ? "Лента показана без фильтрации" : "Повторяю в фоне; видео появятся после проверки";
+    expect(indicatorTexts("error", info({ failure }))).toEqual({ title, detail });
   });
 });
 
@@ -244,5 +280,24 @@ describe("откат позиции не зависит от CSS scroll-behavior
     expect(reenter(el, e)).toBe("unsafe");
     expect(restored).toEqual([{ height: 1000, top: 200, left: 0 }]);
     expect(frames).toHaveLength(0); // дальнейших кадров/попыток нет
+  });
+});
+
+describe("countRenderedShown: в цель идут только отображаемые карточки", () => {
+  const card = (id: string | null, w: number, h: number, visible = true) =>
+    ({ id, getBoundingClientRect: () => ({ width: w, height: h }), checkVisibility: () => visible }) as unknown as Element;
+  const doc = (els: Element[]) => ({ querySelectorAll: () => els }) as unknown as Pick<Document, "querySelectorAll">;
+  const idOf = (e: Element) => (e as unknown as { id: string | null }).id;
+  it("нулевой размер (display:none у себя или предка, страница SPA в фоне) и visibility:hidden не считаются", () => {
+    const els = [card("a", 200, 100), card("b", 0, 0), card("c", 200, 0), card("d", 200, 100, false), card("e", 200, 100)];
+    expect(countRenderedShown(doc(els), idOf)).toBe(2);
+  });
+  it("клоны одного видео считаются один раз, карточки без id — по узлу", () => {
+    const els = [card("a", 1, 1), card("a", 1, 1), card(null, 1, 1), card(null, 1, 1)];
+    expect(countRenderedShown(doc(els), idOf)).toBe(3);
+  });
+  it("без checkVisibility (старый браузер) решает размер", () => {
+    const e = { getBoundingClientRect: () => ({ width: 5, height: 5 }) } as unknown as Element;
+    expect(isRendered(e)).toBe(true);
   });
 });

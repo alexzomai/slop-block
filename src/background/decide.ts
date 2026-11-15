@@ -1,3 +1,4 @@
+import type { ProviderStatus } from "../shared/ui-messages";
 import type { DecideResponse, DecidedOk, PeekResponse, SmartTag, VideoMeta } from "../shared/decision";
 import { tagIdentity as normText } from "../shared/settings";
 import { createCache } from "./cache";
@@ -7,6 +8,7 @@ import { selectQuestions, subtopics } from "./subtopics";
 import { createLimiter } from "./limiter";
 import { createStats, statsStorage } from "./stats";
 import { PROVIDERS, cacheNamespace, type ProviderId } from "./providers";
+import { createPauses, type Pauses } from "./pause";
 import { createRejections } from "./rejected";
 import { activeModel, getKeyWithGen, getSettings } from "./settings";
 import type { KV } from "./storage";
@@ -22,6 +24,7 @@ export interface DeciderOptions {
   limits?: { maxConcurrent: number; perMinute: number; maxQueue: number };
   /** Общая память об отклонённых ключах (с запросом трат); иначе создаётся своя. */
   rejections?: ReturnType<typeof createRejections>;
+  pauses?: Pauses;
 }
 
 const BAD: DecideResponse = { ok: false, error: "bad_response" };
@@ -67,7 +70,8 @@ export function createDecider(o: DeciderOptions) {
   const stats = { openrouter: statsOf("openrouter"), typesafe: statsOf("typesafe") };
 
   const rejections = o.rejections ?? createRejections(o.kv);
-  type Err = "network" | "bad_response" | "no_key" | "rate_limited";
+  const pauses = o.pauses ?? createPauses(o.now);
+  type Err = "network" | "bad_response" | "no_key" | "rate_limited" | "no_credits" | "access_denied";
   type Fresh = { ok: true; probs: Map<string, number> } | { ok: false; error: Err };
   type Pair = { ok: true; p: number } | { ok: false; error: Err };
   // single-flight по каждой паре (videoId, текст тега): пару в полёте не заказывает никто, кроме владельца
@@ -75,6 +79,8 @@ export function createDecider(o: DeciderOptions) {
   const pairKey = (videoId: string, ns: string, n: string) => videoId + "|" + ns + "|" + n;
 
   async function fetchMissing(video: VideoMeta, missing: SmartTag[], key: string, keyGen: string, model: string, provider: ProviderId, ns: string): Promise<Fresh> {
+    const paused = pauses.active(provider, keyGen);
+    if (paused) return { ok: false, error: paused.kind }; // пауза после 402/403: платный запрос не уходит
     const body = buildRequest(model, video, missing);
     let res;
     try {
@@ -83,6 +89,12 @@ export function createDecider(o: DeciderOptions) {
       return { ok: false, error: "network" };
     }
     if (!res.ok) {
+      if (res.error === "no_credits" || res.error === "access_denied") {
+        // ключ не помечается; пауза с backoff — только если поколение ключа не сменилось за время запроса (после await записи нет)
+        const cur = await getKeyWithGen(o.kv, provider).then((k) => k.gen, () => undefined);
+        if (cur === keyGen) pauses.hit(provider, keyGen, res.error);
+        return { ok: false, error: res.error };
+      }
       if (res.error !== "key_rejected") return { ok: false, error: res.error };
       // 401/403: запомнить отпечаток ключа; наружу — как «нет ключа» (контракт decision.ts не меняется)
       await rejections.mark(provider, key, keyGen).catch(() => undefined);
@@ -90,6 +102,7 @@ export function createDecider(o: DeciderOptions) {
     }
     // платный вызов учитывается здесь, в единственном месте его выполнения: один раз на запрос к Jev,
     // а не по числу ожидающих (single-flight) и не при попадании в кэш; запрос оплачен, даже если ответ не разобран
+    pauses.clear(provider, keyGen);
     await stats[provider].record(res.json);
     const parsed = parseResponse(res.json, missing);
     if (!parsed) return { ok: false, error: "bad_response" };
@@ -190,5 +203,12 @@ export function createDecider(o: DeciderOptions) {
     return answer(p, known, threshold);
   }
 
-  return Object.assign(decide, { peek, rejections });
+  /** Состояние активного провайдера для popup/options (без ключа и текстов ответа). */
+  async function providerStatus(): Promise<ProviderStatus> {
+    const { provider } = await getSettings(o.kv);
+    const { gen } = await getKeyWithGen(o.kv, provider);
+    return { ok: true, provider, state: pauses.status(provider, gen) };
+  }
+
+  return Object.assign(decide, { peek, rejections, providerStatus });
 }
