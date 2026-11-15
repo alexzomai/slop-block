@@ -35,7 +35,7 @@ try {
 
   // popup: tags + mode + usage block
   const popup = await context.newPage();
-  await popup.setViewportSize({ width: 360, height: 800 });
+  await popup.setViewportSize({ width: 360, height: 1100 }); // tall: no scrollbar eating the right edge
   await popup.goto(`chrome-extension://${extId}/popup.html`);
   await popup.evaluate((k) => Promise.all([chrome.storage.sync.clear(), chrome.storage.local.set({ openrouterKey: k })]), FAKE_KEY);
   await popup.reload();
@@ -66,7 +66,7 @@ try {
   await af.goto("https://www.youtube.com/");
   await af.waitForFunction(() => {
     const s = document.getElementById("slop-feed-status");
-    return !!s && !s.hidden && s.textContent.startsWith("No more matching");
+    return !!s && !s.hidden && s.dataset.state === "exhausted";
   }, null, { timeout: 40000 });
   await af.waitForTimeout(800);
   await af.screenshot({ path: join(out, "feed-autofill.png") });

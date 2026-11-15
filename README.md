@@ -39,7 +39,7 @@ slop-block lets you say what you want ("programming tutorials", "calm travel doc
 
 ## Without filter / With filter
 
-The same YouTube home feed, before and after. The tags were about IT, AI and software, in **Show only matching** mode.
+The same YouTube home feed, before and after. Without the filter it is a mix: AI and programming next to gaming, news, trailers and gadget reviews. With tags about IT, AI and software in **Show only matching** mode, only videos about AI, programming and related tech are left.
 
 <table>
   <tr>
@@ -47,8 +47,28 @@ The same YouTube home feed, before and after. The tags were about IT, AI and sof
     <th align="center">With filter</th>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/compare-without.jpg" alt="YouTube home feed without the filter" width="450"></td>
-    <td><img src="docs/screenshots/compare-with.jpg" alt="The same YouTube home feed with the filter" width="450"></td>
+    <td><img src="docs/screenshots/compare-without.jpg" alt="YouTube home feed without the filter: a mixed feed with AI and programming videos next to gaming, news and trailers" width="450"></td>
+    <td><img src="docs/screenshots/compare-with.jpg" alt="The same YouTube home feed with the filter: only videos about AI, programming and related tech" width="450"></td>
+  </tr>
+</table>
+
+## Interface
+
+<table>
+  <tr>
+    <th align="center">Popup</th>
+    <th align="center">Settings</th>
+    <th align="center">Feed indicator</th>
+  </tr>
+  <tr>
+    <td valign="top"><img src="docs/screenshots/popup.png" alt="Popup: filter switch, mode, tag list and spending block" width="190"></td>
+    <td valign="top"><img src="docs/screenshots/options.png" alt="Settings page: provider keys, model and threshold" width="260"></td>
+    <td valign="top"><img src="docs/screenshots/feed-autofill.png" alt="Feed with the search-stopped indicator and a Search more button" width="380"></td>
+  </tr>
+  <tr>
+    <td align="center">Mode, tags and spend</td>
+    <td align="center">Keys, model, threshold</td>
+    <td align="center">Search stopped, "Search more" button</td>
   </tr>
 </table>
 
@@ -68,11 +88,6 @@ The same YouTube home feed, before and after. The tags were about IT, AI and sof
 - **English and Russian interface.**
 
 ## How it works
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/how-it-works-dark.svg">
-  <img alt="YouTube cards go to the content script, then to the background worker (cache and limiter), then to the Jev model of the selected provider; the answer comes back and the card is shown or hidden" src="docs/diagrams/how-it-works-light.svg" width="100%">
-</picture>
 
 Jev is a decision model that answers yes/no questions. For each video card the extension sends the title, the channel and a short description snippet together with your tags, and Jev returns how likely each tag matches. If the probability passes your threshold (default `0.7`), the video is matched. In **Show only matching** mode matched videos fade in and the rest stay hidden; in **Hide matching** mode matched videos are hidden.
 
